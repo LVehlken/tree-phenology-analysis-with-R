@@ -1,0 +1,221 @@
+```{r}
+library(chillR)
+library(dplyr)
+library(tidyverse)
+```
+# These climate scenarios can be downloaded using chillR. In current research SSPs are used, therefore we are also using them now. They can be downloaded from "". The API provides the possiblility to download them directly in chillR, using the download_cmip6_ecmwfr()-tool. We provide the tool with information about the scenarios we want to download, as well as the area of interest, models to be used. The models are basically different modelling approaches to model the future climate, using different algorithms and taking into account different aspects. In addition we have to the time intervall and frequency. Furthermore we have to specifiy the variables we want to download. 
+
+```{r}
+location=c(-6.2333,37.8667)
+
+areas <- c(lat_high = 38, lon_low = -7.0, lat_low = 37, lon_high = -5.0)
+
+```
+
+```{r}
+download_cmip6_ecmwfr(
+  scenarios = c("ssp126", "ssp245", "ssp370", "ssp585"),
+  area = areas,
+  user = '3ca1a864-ccfe-4be4-b52d-bae18478db98',
+  key = '16136f09-1be6-48f0-8273-9de996df874e',
+  model = 'default',
+  frequency = 'monthly',
+  variable = c('Tmin', 'Tmax'),
+  year_start = 2015,
+  year_end = 2100)
+```
+#Like for the historical records we also need a baseline scenarios to which the scenarios refere. It is recommended that futere- and baseline data are created with the same tool. Therefore we can use the download_baseline_cmip6_ecmwfr()-tool. We download the baseline data for the years 1986-2014 as it is available in the copernicus database and is with 29 years almost a complete climate normal interval
+```{r}
+download_baseline_cmip6_ecmwfr(
+  area = areas,
+  user = '3ca1a864-ccfe-4be4-b52d-bae18478db98',
+  key = '16136f09-1be6-48f0-8273-9de996df874e',
+  model = 'match_downloaded',
+  frequency = 'monthly',
+  variable = c('Tmin', 'Tmax'),
+  year_start = 1986,
+  year_end = 2014, 
+  month = 1:12)
+```
+#in the next step we extract the data for our point of interest, as the downloaded scenario data is gridded, therefore containing redundant information for us. 
+```{r}
+
+station <- data.frame(
+  station_name = c("Sevilla"),
+  longitude = c(-6.2333),
+  latitude = c(37.8667))
+
+extracted <- chillR::extract_cmip6_data(stations = station)
+```
+#With the gen_rel_change_scenario() tool we can generate change scenarios for the downloaded projections. To be usable for chillR we have to also transform them into a list, using the convert_scen_information() function
+```{r}
+change_scenarios <- gen_rel_change_scenario(extracted)
+
+```
+
+```{r}
+write.csv(change_scenarios, "all_change_scenarios.csv", row.names = FALSE)
+
+scen_list <- convert_scen_information(change_scenarios)
+```
+
+
+
+```{r}
+scen_frame <- convert_scen_information(scen_list)
+```
+# The baseline scenario we are using so far is based the copernicus data. Nevertheless, we still have the observed weather data from our location that we want to use. To take it into account I can use it to adjust the baseline of the newly downloaded data. Therefore I create a climate scenarios for the year 2000, which is also the baseline year in the generated data, and adjust it with the 1996 baseline scenario. 
+```{r}
+Dehesa_temps<-read_tab("Dehesa_temps.csv")
+
+temps_1996 <- temperature_scenario_from_records(Dehesa_temps,
+                                                1996)
+
+temps_2000 <- temperature_scenario_from_records(Dehesa_temps,
+                                                2000)
+base <- temperature_scenario_baseline_adjustment(temps_1996,
+                                                 temps_2000)
+
+scen_list <- convert_scen_information(change_scenarios, 
+                                      give_structure = FALSE)
+# now I can adjust the generated projections with the adjusted year 2000 scenario of the observed weather data. 
+
+adjusted_list <- 
+  temperature_scenario_baseline_adjustment(
+    base,
+    scen_list,
+    temperature_check_args =
+      list(scenario_check_thresholds = c(-5, 15)))
+
+# The adjusted list I can now use for temperature generation
+temps <- temperature_generation(Dehesa_temps, 
+                       years = c(1973, 2019),
+                       sim_years = c(2001, 2100),
+                       adjusted_list,
+                       temperature_check_args =
+                         list(scenario_check_thresholds = c(-5, 15)))
+
+save_temperature_scenarios(temps,
+                            "future_climate",
+                            "Dehesa_futuretemps")
+```
+
+
+#The generated data I can now use again to plot the changes in temperature variables, using the already known workflows.
+
+```{r}
+frost_model <- function(x)
+  step_model(x,
+             data.frame(
+               lower = c(-1000, 0),
+               upper = c(0, 1000),
+               weight = c(1, 0)))
+
+models <- list(Chill_Portions = Dynamic_Model,
+               GDH = GDH,
+               Frost_H = frost_model)
+```
+
+```{r}
+chill_future_scenario_list <- tempResponse_daily_list(temps,
+                                                    latitude = 37.8667,
+                                                    Start_JDay = 305,
+                                                    End_JDay = 59,
+                                                    models = models)
+
+chill_future_scenario_list <- lapply(chill_future_scenario_list,
+                                     function(x) x %>%
+                                       filter(Perc_complete == 100))
+
+save_temperature_scenarios(chill_future_scenario_list,
+                           "future_climate",
+                           "Dehesa_futurechill_305_59")
+```
+
+```{r}
+chill_hist_scenario_list<-load_temperature_scenarios("data",
+                                                     "Dehesa_hist_chill_305_59")
+
+observed_chill <- read_tab("data/Dehesa_observed_chill_305_59.csv")
+
+
+chills <- make_climate_scenario(
+  chill_hist_scenario_list,
+  caption = "Historical",
+  historic_data = observed_chill,
+  time_series = TRUE)
+
+plot_climate_scenarios(
+  climate_scenario_list = chills,
+  metric = "Chill_Portions",
+  metric_label = "Chill (Chill Portions)")
+```
+#To plot the data for all future climate scenarios we add each to the chill object. In a first step we identify the data for the SSP and Time combinations
+```{r}
+SSPs <- c("ssp126", "ssp245", "ssp370", "ssp585")
+Times <- c(2050, 2085)
+
+list_ssp <- 
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(2) %>%
+  unlist()
+
+list_gcm <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(3) %>%
+  unlist()
+
+list_time <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(4) %>%
+  unlist()
+#
+
+for(SSP in SSPs)
+  for(Time in Times)
+    {
+    
+    # find all scenarios for the ssp and time
+    chill <- chill_future_scenario_list[list_ssp == SSP & list_time == Time]
+    names(chill) <- list_gcm[list_ssp == SSP & list_time == Time]
+    if(SSP == "ssp126") SSPcaption <- "SSP1"
+    if(SSP == "ssp245") SSPcaption <- "SSP2"
+    if(SSP == "ssp370") SSPcaption <- "SSP3"
+    if(SSP == "ssp585") SSPcaption <- "SSP5"    
+    if(Time == "2050") Time_caption <- "2050"
+    if(Time == "2085") Time_caption <- "2085"
+    chills <- chill %>% 
+      make_climate_scenario(
+        caption = c(SSPcaption,
+                    Time_caption),
+        add_to = chills)
+}
+```
+# The following plot shows the chill portions for the Dehesa San Francisco for different climate models for all five SSP scenarios for the year 2050 and 2085. In all years for all scenarios and models we can see lower expected chill as for the historical observations. As expected, we see the lowest reduction in chill for the SSP1 models, showing relatively similar distribution for 2050 and 2085. For the SSP2, SSP3 and SSP5 models in 2050 we see relatively low differences in the chill. For 2085 we can see a rapid decline in chill, indicating that some tipping points may be reached.
+```{r}
+info_chill <-
+  plot_climate_scenarios(
+    climate_scenario_list = chills,
+    metric = "Chill_Portions",
+    metric_label = "Chill (Chill Portions)",
+    texcex = 1.5)
+```
+# In the plott for the growing hours, different trends can be seen. Compared to the historic records, for alle scenarios and models an increase in growing degreee hours can be seen. Again, the SSP1 models show the lowest change with relatively similar hours for 2050 and 2085. The hours 
+```{r}
+info_heat <-
+  plot_climate_scenarios(
+    climate_scenario_list = chills,
+    metric = "GDH",
+    metric_label = "Heat (Growing Degree Hours)",
+    texcex = 1.5)
+```
+```{r}
+info_frost <-
+ plot_climate_scenarios(
+   climate_scenario_list=chills,
+   metric="Frost_H",
+   metric_label="Frost hours",
+   texcex=1.5)
+```
+
+

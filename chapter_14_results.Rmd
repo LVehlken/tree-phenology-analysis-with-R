@@ -1,0 +1,175 @@
+
+The previously generated temperature scenarios were based on observed temperature data for a short time span and therefore only represent climatic conditions similar to these years. Nevertheless, climatic conditions change during time. The weather generator allows to generate temperature data based on climate scenarios that represent these changes. There
+
+Producing 
+```{r}
+library(chillR)
+library(tidyverse)
+station_list<-handle_gsod(action="list_stations",
+                          location=c(-6.2333,37.8667),
+                          time_interval=c(1973,2019))
+
+dehesa_weather <-handle_gsod(action="download_weather",
+                     location=station_list$chillR_code[1],
+                     time_interval=c(1973,2019))%>%
+  handle_gsod()
+
+```
+
+```{r}
+fix_weather(dehesa_weather$`SEVILLA`)$QC
+```
+```{r}
+patch_weather_dehesa <-
+      handle_gsod(action = "download_weather",
+                  location = as.character(station_list$chillR_code[c(5)]),
+                  time_interval = c(1973,2019)) %>%
+  handle_gsod()
+
+
+
+```
+```{r}
+# fill gaps for SEVILLA weather station with weather data from MORON AB.
+dehesa_patches <- patch_daily_temperatures(
+  weather = dehesa_weather$`SEVILLA`,
+  patch_weather = patch_weather_dehesa$`MORON AB` 
+)
+
+fix_weather(dehesa_patches)$QC
+
+#Interpolate last 2 missing dates
+Dehesa <-fix_weather(dehesa_patches)
+
+fix_weather(Dehesa)$QC
+Dehesa_temps <- Dehesa$weather
+write.csv(Dehesa_temps, "Dehesa_temps.csv", row.names = FALSE)
+```
+```{r}
+Dehesa_temps <- read.csv("D:/DatenVehlken/R/Projects/Chill_R/Dehesa_temps.csv")
+Dehesa_temps
+```
+```{r}
+scenario_1996
+```
+#from the downloaded data we first create a baseline scenario using the temperature_scenario_from_records() function. The tool creates monthly mean Tmin and Tmax values that are representative for the particular year. Furthermore we use the same tool to create temperature scenarios for our years of interest. 
+
+```{r}
+#creating baseline scenario
+scenario_1996 <- temperature_scenario_from_records(weather = Dehesa_temps,
+                                                   year = 1996)
+#creating scenarios for several years
+all_past_scenarios <- temperature_scenario_from_records(
+  weather = Dehesa_temps,
+  year = c(1989,
+           1991,
+           1996,
+           2001,
+           2008))
+
+# we than the adjust scenarios with baseline scenario. Now the scenarios don't contain the absoult Tmin and Tmax mean values but the relative change to the baseline scenario.
+adjusted_scenarios <- temperature_scenario_baseline_adjustment(
+  baseline = scenario_1996,
+  temperature_scenario = all_past_scenarios)
+
+# we can now use these relative scenarios to generate temperature scenarios with means for Tmin and Tmax that correspond to the relative scenario 
+all_past_scenario_temps <- temperature_generation(
+  weather = Dehesa_temps,
+  years = c(1973,2019),
+  sim_years = c(2001,2100),
+  temperature_scenario = adjusted_scenarios)
+
+
+
+
+save_temperature_scenarios(all_past_scenario_temps, "data", "Dehesa_hist_scenarios")
+```
+#now we want to calculate the chill accumulation for the scenarios. Instead of using the functions we created or used before we just can just the tempResponse_daily_list()-tool that is provided by the chillR package, which combines all the function. Therefore we first define a model list with the models we used before
+
+```{r}
+frost_model <- function(x)
+  step_model(x,
+             data.frame(
+               lower=c(-1000,0),
+               upper=c(0,1000),
+               weight=c(1,0)))
+
+models <- list(Chill_Portions = Dynamic_Model,
+               GDH = GDH,
+               Frost_H = frost_model)
+```
+# using the created list of historical scenarios as input the function computes temperature-based metrics defined by the input models.
+```{r}
+chill_hist_scenario_list <- tempResponse_daily_list(all_past_scenario_temps,
+                                                    latitude = 37.8667,
+                                                    Start_JDay = 305,
+                                                    End_JDay = 59,
+                                                    models = models)
+```
+
+```{r}
+chill_hist_scenario_list <- lapply(chill_hist_scenario_list,
+                                   function(x) x %>%
+                                     filter(Perc_complete == 100))
+
+save_temperature_scenarios(chill_hist_scenario_list, "data","Dehesa_hist_chill_305_59")
+```
+```{r}
+chill_hist_scenario_list
+```
+
+# we now can plot the results using ggplot
+```{r}
+#first we prepare the data for better usability in ggplot and filter out incomplete records
+scenarios <- names(chill_hist_scenario_list)[1:4]
+
+all_scenarios <- chill_hist_scenario_list[[scenarios[1]]] %>%
+  mutate(scenario = as.numeric(scenarios[1]))
+
+for (sc in scenarios[2:4])
+ all_scenarios <- all_scenarios %>%
+  rbind(chill_hist_scenario_list[[sc]] %>%
+          cbind(
+            scenario=as.numeric(sc))
+        ) %>%
+  filter(Perc_complete == 100)
+
+#
+
+# we also can compute the actual 'observed' chill for comparison
+actual_chill <- tempResponse_daily_list(Dehesa_temps,
+                                        latitude=37.8667,
+                                        Start_JDay = 305,
+                                        End_JDay = 59,
+                                        models)[[1]] %>%
+  filter(Perc_complete == 100)
+
+
+ggplot(data = all_scenarios,
+       aes(scenario,
+           Chill_Portions,
+           fill = factor(scenario))) +
+  geom_violin() +
+  ylab("Chill accumulation (Chill Portions)") +
+  xlab("Scenario year") +
+  theme_bw(base_size = 15) +
+  ylim(c(0,90)) +
+  geom_point(data = actual_chill,
+             aes(End_year,
+                 Chill_Portions,
+                 fill = "blue"),
+             col = "blue",
+             show.legend = FALSE) +
+  scale_fill_discrete(name = "Scenario",
+                      breaks = unique(all_scenarios$scenario)) 
+```
+```{r}
+actual_chill <- tempResponse_daily_list(Dehesa_temps,
+                                        latitude=37.8667,
+                                        Start_JDay = 305,
+                                        End_JDay = 59,
+                                        models)[[1]] %>%
+  filter(Perc_complete == 100)
+write.csv(actual_chill,"data/Dehesa_observed_chill_305_59.csv", row.names = FALSE)
+```
+

@@ -1,0 +1,45 @@
+
+    Run the chilling() function on the Winters_hours_gap dataset
+    Create your own temperature-weighting chill model using the step_model() function
+    Run this model on the Winters_hours_gaps dataset using the tempResponse() function.
+```{r}
+library(chillR)
+library(tidyverse)
+library(kableExtra)
+
+```
+# the chilling() tool of the chill package can be used to calculate the four horticultural chill metrics Chilling Hours, Chilling Units (based on Utah Model), Chill Portions (based on Dynamic Model) and Growing Degree Hours. As input it needs a dataset with hourly temperatures with Julian days. The start and end days of the calculation can be specified. For the Winters_hours_gaps dataset we compute them for the Julian days 90 to 100.
+```{r}
+output <- chilling(make_JDay(Winters_hours_gaps),
+                   Start_JDay = 90,
+                   End_JDay = 100)
+
+kable(output) %>%
+  kable_styling("striped",
+                position = "left",
+                font_size = 10)
+```
+
+# The chilling()-function is limitted to the four metrics described above. With the tempResponse()-function of chillR you can calculate metrics for models that you specify in a list, allowing to use your own model. As exampel we create our own climate model using a step model.
+
+
+```{r}
+df<-data.frame(
+  lower= c(-1000, 2,4, 6, 8, 10,    12),
+  upper= c(    2, 4, 6, 8, 10, 12, 1000),
+  weight=c(    0, 1, 2, 3, 2, 1,    0))
+
+custom <- function(x) step_model(x, df)
+
+#The model we can then use with the tempResponse function
+output <- tempResponse(make_JDay(Winters_hours_gaps),
+                       Start_JDay = 90,
+                       End_JDay = 100,
+                       models = list(custom = custom))
+
+kable(output) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+

@@ -1,0 +1,149 @@
+```{r}
+library(chillR)
+library(tidyverse)
+
+```
+1. Parameterize the PhenoFlex model for `Roter Boskoop’ apples.
+
+The PhenoFlex model is a combination of the Dynamic Model and the GDH model and is contained in the chillR-package. It can transition between endo- and ecodormancy by translating accumulated chill(Dynamic Model) to heat effectiveness (GDH model) using a sigmoidal curve. The model allows to re calibrate the factors it uses and can therefore be fitted to certain cultivars or species. Together with knowledge about the dormancy processes of these cultivars it allows to develope process-based models. How this model is used will be shown on the Roter Boskoop cultivar.
+
+
+First I import the data for the Roter Boskoop blooming dates as well as hourly temperature data of the area and convert it in formats usable for chillR.
+
+```{r}
+Boskop <-
+  read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+
+hourtemps <- 
+  read_tab("data/TMaxTMin1958-2019_patched.csv") %>%
+  stack_hourly_temps(latitude = 50.6)
+```
+
+The model can be used by the PhenoFlex() function. The function has 12 parameters that can be specified and relate to the dynamic model, the GDH model as well as the transition. As setting the parameters is difficult I first have to fit them. For that I use the solving process "Simulated Annealing". The process uses a set of initial parameters to predict outcomes and adjust the parameters based on the errors it encounters. As the knowledge about the results is limited, solvers are run multiple times which varying initial parameters. When fitting the parameters I use the phenologyFitter()-function instead of the PhenoFlex() function.
+
+As initial parameters I use a provided set of parameters. Furthermore I specify upper and lower boundaries that allow the variation of the initial parameters of the solving process.  
+```{r}
+# here's the order of the parameters (from the helpfile of the
+# PhenoFlex_GDHwrapper function)
+#          yc,  zc,  s1, Tu,    E0,      E1,     A0,         A1,   Tf, Tc, Tb,  slope
+par <-   c(40, 190, 0.5, 25, 3372.8,  9900.3, 6319.5,
+           5.939917e13,  4, 36,  4,  1.60)
+upper <- c(41, 200, 1.0, 30, 4000.0, 10000.0, 7000.0,  
+           6.e13, 10, 40, 10, 50.00)
+lower <- c(38, 180, 0.1, 0 , 3000.0,  9000.0, 6000.0,   
+           5.e13,  0,  0,  0,  0.05)
+```
+
+Now I generate a list of seasons containing temperature data and can be used in the phenologyFitter-function. For that we use the genSeasonList-function.
+
+```{r}
+SeasonList <- genSeasonList(hourtemps$hourtemps,
+                            mrange = c(8, 6),
+                            years = c(1959:2018))
+```
+Now I use the phenologyFitter() to fit the parameters. I insert the initial parameters as well as the upper and lower bounderies and provide the temperature data. As model function I use the PhenoFlex_GDHwrapper, that automatically computes the growing degree hours and applies it to the PhenoFlex()-model. Furthermore I set the maximum number of iterations to 100 (maxit = 100). I stop the iteration when the model doesn't show improvement for 5 iterations. 
+
+```{r}
+
+# fitting the parameters 
+
+Fit_res <- 
+  phenologyFitter(par.guess = par, 
+                  modelfn = PhenoFlex_GDHwrapper,
+                  bloomJDays = Boskop$pheno[which(Boskop$Year > 1958)],
+                  SeasonList = SeasonList,
+                  lower = lower,
+                           upper = upper,
+                           control = list(smooth = FALSE,
+                                          verbose = FALSE, 
+                                          maxit = 100,
+                                          nb.stop.improvement = 5))
+# saving the model parameters
+Boskop_par <- Fit_res$par
+
+write.csv(Boskop_par,
+          "data/PhenoFlex_parameters_Boskop.csv")
+```
+
+2. Produce plots of predicted vs. observed bloom dates and distribution of prediction errors.
+
+Now I use the fittet parameters to predict the blooms for every year of our data. 
+
+```{r}
+Boskop_par <- 
+  read_tab("data/PhenoFlex_parameters_Boskop.csv")[,2]
+
+SeasonList <- genSeasonList(hourtemps$hourtemps, 
+                            mrange = c(8, 6),
+                            years = c(1959:2019))
+
+Boskop_PhenoFlex_predictions <- Boskop[which(Boskop$Year > 1958),]
+
+for(y in 1:length(Boskop_PhenoFlex_predictions$Year))
+   Boskop_PhenoFlex_predictions$predicted[y] <-
+    PhenoFlex_GDHwrapper(SeasonList[[y]],
+                         Boskop_par)
+
+
+```
+
+Now I plot the predicted vs observed bloom using ggplot.
+
+```{r}
+
+ggplot(Boskop_PhenoFlex_predictions,
+       aes(x = pheno,
+           y = predicted)) +
+  geom_point() +
+  geom_abline(intercept = 0,
+              slope = 1) +
+  theme_bw(base_size = 15) +
+  xlab("Observed bloom date (Day of the year)") +
+  ylab("Predicted bloom date (Day of the year)") +
+  ggtitle("Predicted vs. observed bloom dates")
+
+# eier wurst
+```
+
+Furthermore I plot the distribution of the prediction errors.
+
+```{r}
+# computing the errors
+
+Boskop_PhenoFlex_predictions$Error <- 
+  Boskop_PhenoFlex_predictions$predicted - 
+  Boskop_PhenoFlex_predictions$pheno
+
+# plotting the distribution
+
+ggplot(Boskop_PhenoFlex_predictions,
+       aes(Error)) +
+  geom_histogram() +
+  ggtitle("Distribution of prediction errors")
+```
+
+3. Compute the model performance metrics RMSEP, mean error and mean absolute error.
+
+```{r,eval=FALSE}
+
+RMSEP(Boskop_PhenoFlex_predictions$predicted,
+      Boskop_PhenoFlex_predictions$pheno)
+
+mean(Boskop_PhenoFlex_predictions$Error)
+
+mean(abs(Boskop_PhenoFlex_predictions$Error))
+
+```
+ The RMSEP is at 4.69 days, while we can see a mean error of -1.92 days. The mean absolute error is at 3.34 days. The distribution of the prediction errors is as shown in the following histogram.
+
+
+
+

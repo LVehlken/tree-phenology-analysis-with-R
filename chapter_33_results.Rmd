@@ -1,0 +1,214 @@
+```{r}
+library(chillR)
+library(tidyverse)
+library(leaflet)
+library(Kendall)
+```
+#knowledge about frost risk is crucial for farmers to prevent fro
+
+# we analyse the frost risk for Roter Boskoop at Campus Klein ALtendorf
+# first we load the datasets again
+
+```{r}
+Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv")
+
+CKA_weather <- read_tab("data/TMaxTMin1958-2019_patched.csv")
+```
+# as we want to plot the frosk risks using ggplot we format the data.frame accordingly
+```{r}
+library(tidyverse)
+
+Boskop <- 
+  Boskop %>%
+  pivot_longer(cols = "First_bloom":"Last_bloom",
+               names_to = "variable",
+               values_to="YEARMODA") %>%
+  mutate(Year = as.numeric(substr(YEARMODA, 1, 4)),
+         Month = as.numeric(substr(YEARMODA, 5, 6)),
+         Day = as.numeric(substr(YEARMODA, 7, 8))) %>%
+  make_JDay() 
+```
+# First we plot the development of the blooming periods for Roter Boskoop between 1958 and 2019.
+```{r}
+ggplot(data = Boskop,
+       aes(Pheno_year,
+           JDay,
+           col = variable)) +
+  geom_line() +
+  theme_bw(base_size = 15) +
+  scale_color_discrete(name = "Phenological event",
+                       labels = c("First bloom",
+                                  "Full bloom", 
+                                  "Last bloom")) +
+  xlab("Phenological year") +
+  ylab("Julian date (day of the year)") +
+  geom_smooth(method = "lm")
+```
+# the linear plot shows a trend towards earlier days of the year
+
+```{r}
+ggplot(data=Boskop,aes(Pheno_year,JDay,col=variable)) +
+  geom_smooth() +
+  theme_bw(base_size=15) +
+  scale_color_discrete(
+    name = "Phenological event",
+    labels = c("First bloom", "Full bloom", "Last bloom")) +
+  xlab("Phenological year") +
+  ylab("Julian date (day of the year)") 
+```
+# the same trend can be seen when using a smoothed plot
+
+# In a next trend we want to evaluate the occurence of frost events at CKA since 1958. Therefore we again use our frostmodel, but addept it a little bit. As we are not interestet in the total frost hours but only if a frost event occurse we don't sum up the frost hours by setting summ to FALSE. Instead we compute the daily frost hours
+```{r}
+
+frost_df = data.frame(
+  lower = c(-1000, 0),
+  upper = c(0, 1000),
+  weight = c(1, 0))
+
+frost_model_no_summ <- 
+  function(x) step_model(x, 
+                         frost_df,
+                         summ=FALSE)
+
+hourly <- stack_hourly_temps(CKA_weather,
+                             latitude = 50.625)
+
+frost <- tempResponse(hourly,
+                      models = c(frost = frost_model))
+
+hourly$hourtemps[, "frost"] <- frost_model_no_summ(hourly$hourtemps$Temp)
+
+
+
+Daily_frost_hours <- aggregate(hourly$hourtemps$frost,
+                               by = list(hourly$hourtemps$YEARMODA),
+                               FUN = sum)
+
+Daily_frost <- make_JDay(CKA_weather)
+
+Daily_frost[, "Frost_hours"] <- Daily_frost_hours$x
+```
+
+#Now we can plot the daily frost hours for 1958 to 2019 using ggplot.
+```{r}
+Daily_frost$Frost_hours[which(Daily_frost$Frost_hours == 0)] <- NA
+
+ggplot(data = Daily_frost,
+       aes(Year,
+           JDay,
+           size = Frost_hours)) +
+  geom_point(col = "light blue",
+             alpha = 0.8) + 
+  scale_size(range = c(0, 3),
+             breaks = c(1, 5, 10, 15, 20),
+             labels = c("1", "5", "10", "15", "20"),
+             name = "Frost hours") +
+  theme_bw(base_size = 15)
+```
+# now we want to analyse  the relationship between spring frost events and the bloom period of ‘Roter Boskoop’. Therefore we create a plot again. 
+```{r}
+#As we are only interested in the spring period we filter out the other days by limitting our y-axis values by setting ylim(c(75, 140)).
+
+# To be able to better see when frost occurs during bloom we colorice our plot by assigning different colors if the frost occurse before, during or after bloom. Therefore we first create a new data.frame from Roter Boskoop with single columns for first full and last bloom of the year
+
+Ribbon_Boskop <-
+  Boskop %>%
+  select(Pheno_year, variable, JDay) %>%
+  pivot_wider(names_from = "variable", values_from = "JDay")
+
+# To identify frost events that overlap with bloom we add the bloom events to the daily frost data set and assign every day of the year the value if they are before the first bloom, during bloom or after the last bloom. 
+lookup_dates <- Ribbon_Boskop
+
+row.names(lookup_dates) <- lookup_dates$Pheno_year
+
+Daily_frost[, "First_bloom"]<-
+  lookup_dates[as.character(Daily_frost$Year),
+               "First_bloom"]
+
+Daily_frost[, "Last_bloom"]<-
+  lookup_dates[as.character(Daily_frost$Year),
+               "Last_bloom"]
+
+Daily_frost[which(!is.na(Daily_frost$Frost_hours)),
+            "Bloom_frost"] <-
+  "Before bloom"
+
+Daily_frost[which(Daily_frost$JDay >= Daily_frost$First_bloom),
+            "Bloom_frost"]<-
+  "During bloom"
+
+Daily_frost[which(Daily_frost$JDay > Daily_frost$Last_bloom),
+            "Bloom_frost"]<-
+  "After bloom"
+
+Daily_frost[which(Daily_frost$JDay > 180),
+            "Bloom_frost"]<-
+  "Before bloom"
+
+# Now we plot the frost events for the spring between 1958 and 2019 together with the blooming events and colorize them accordingly to the described anforderungen
+ggplot(data = Ribbon_Boskop,
+       aes(Pheno_year)) +
+  geom_ribbon(aes(ymin = First_bloom, 
+                  ymax = Last_bloom),
+              fill = "light gray") +
+  geom_line(aes(y = Full_bloom)) +
+  theme_bw(base_size = 15) +
+  xlab("Phenological year") +
+  ylab("Julian date (day of the year)") +
+  geom_point(data = Daily_frost,
+             aes(Year,
+                 JDay,
+                 size = Frost_hours,
+                 col = Bloom_frost),
+             alpha = 0.8) + 
+  scale_size(range = c(0, 5),
+             breaks = c(1, 5, 10, 15, 20),
+             labels = c("1", "5", "10", "15", "20"),
+             name = "Frost hours") +
+  scale_color_manual(
+    breaks = c("Before bloom",
+               "During bloom",
+               "After bloom"),
+    values = c("light green",
+               "red",
+               "light blue"),
+    name = "Frost timing") +
+  theme_bw(base_size = 15) +
+  ylim(c(75, 140))
+```
+```{r}
+Daily_frost
+Ribbon_Boskop
+```
+# to evaluate how the risk of sprng frost for Roter Boskoop changed over the time we compute a linear regression and conduct a Kendall test. 
+```{r}
+
+#first for each year of our record we separately calculate the sum of frost hours that occure before, during or after bloom
+
+Bloom_frost_trend <- 
+  aggregate(
+    Daily_frost$Frost_hours,
+    by = list(Daily_frost$Year,
+              Daily_frost$Bloom_frost),
+    FUN = function(x) sum(x,
+                          na.rm = TRUE))
+
+colnames(Bloom_frost_trend) <- c("Year",
+                                 "Frost_timing",
+                                 "Frost_hours")
+# now we filter out only the the frost hours that occurred during bloom
+DuringBloom<-
+  Bloom_frost_trend[
+    which(Bloom_frost_trend$Frost_timing == "During bloom"),]
+
+# now we conduct the linear regression and the Kendall test
+
+lm(DuringBloom$Frost_hours ~ DuringBloom$Year)
+
+Kendall(x = DuringBloom$Year,
+        y = DuringBloom$Frost_hours)
+```
+
+# The linear regression shows an yearly icrease in 0.05 hours frost during bloom for Roter Boskoop at CKA. Nevertheless, the results for the Kendall test don't show that there is a significant trend.
+

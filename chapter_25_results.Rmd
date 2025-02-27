@@ -1,0 +1,200 @@
+# Chapter 25 Why PLS doesn't always work
+```{r}
+library(chillR)
+library(tidyverse)
+library(ggplot2)
+library(colorRamps)
+```
+
+1. Produce chill and heat model sensitivity plots for the location you focused on in previous exercises.
+
+As suggested in the previous chapter variation in chill accumulation could influence the performance of PLS regression analysis. To check this I will create chill and heat model sensitivity plots that show the response of the (Dynamic) model to temperature at the Dehesa San Francisco. For the plots I need a data table with daily minimum and maximum temperatures and the corresponding chill portion value. To compute these I can use the functions created or used in previous chapters. To make the reproduction of this easier I will create a function called Chill_model_sensitivity(). It needs the latitude of the location, the models to be analyzed, the month of interest as well as a range for minimum and maximum temperatures as input.
+
+```{r}
+Chill_model_sensitivity<-
+  function(latitude,
+           temp_models = list(Dynamic_Model = Dynamic_Model,
+                              GDH = GDH),
+           month_range = c(10, 11, 12, 1, 2, 3),
+           Tmins = c(-10:20),
+           Tmaxs = c(-5:30))
+  {
+    # create variables where the results of our analysis will be stored in.
+  mins <- NA
+  maxs <- NA
+  metrics <- as.list(rep(NA,
+                         length(temp_models)))
+  names(metrics) <- names(temp_models)
+  month <- NA
+ # create a data table for our analysis. First I loop through all month specified and calculate the number of days for them.
+  for(mon in month_range)
+    {
+    days_month <-
+      as.numeric(difftime(ISOdate(2002,
+                                  mon + 1,
+                                  1),
+                          ISOdate(2002,
+                                  mon,
+                                  1) ))
+    if(mon == 12) days_month <- 31
+    
+    # in the next step I create all day weather tables for them.
+    
+    weather <- 
+      make_all_day_table(data.frame(Year = c(2001, 2001),
+                                    Month = c(mon, mon),
+                                    Day = c(1, days_month),
+                                    Tmin = c(0, 0),
+                                    Tmax = c(0, 0)))
+
+    # loop through all combinations of tmin and tmax where tmax >= tmin and create hourly temperature data.
+    for(tmin in Tmins)
+      for(tmax in Tmaxs)
+        if(tmax >= tmin)
+          {
+          hourtemps <- weather %>%
+            mutate(Tmin = tmin,
+                   Tmax = tmax) %>%
+            stack_hourly_temps(
+              latitude = latitude) %>%
+            pluck("hourtemps",
+                  "Temp")
+          # based on the hourly temperatures generated calculate the model metrics and normalize them by the number of days in that month
+          for(tm in 1:length(temp_models))
+            metrics[[tm]] <- 
+              c(metrics[[tm]],
+                tail(do.call(temp_models[[tm]],
+                        list(hourtemps)),1)/
+                              days_month)
+          
+          mins <- c(mins, tmin)
+          maxs <- c(maxs, tmax)
+          month <- c(month, mon)
+        }
+  }
+  
+  # save the results in a data frame
+  results <- cbind(data.frame(Month = month,
+                              Tmin = mins,
+                              Tmax = maxs),
+                   as.data.frame(metrics))
+  
+  results <- results[!is.na(results$Month),]
+}
+
+
+
+```
+The created function I now apply to the lattitude of the Dehesa San Francisco.
+```{r}
+Model_sensitivities_Dehesa <-
+  Chill_model_sensitivity(latitude = 37.881017,
+                          temp_models = list(Dynamic_Model = Dynamic_Model,
+                                             GDH = GDH),
+                          month_range = c(10:12, 1:5))
+```
+```{r}
+write.csv(Model_sensitivities_Dehesa,
+          "data/Model_sensitivities_Dehesa.csv",
+          row.names = FALSE)
+```
+
+
+
+The data frame produced with this function creates a table with columns for Month, Tmin, Tmax and the model metrics.
+As stated I want to produce plots showing the response of the (Dynamic) model to temperature at the Dehesa San Francisco.
+These results I can use for plotting. For that I also generate a function and call it Chill_sensitivity_temps(). The function uses data produced by the sensitivity function, as well as observed temperature data as input. 
+
+```{r}
+Chill_sensitivity_temps <-
+  function(chill_model_sensitivity_table,
+           temperatures,
+           temp_model,
+           month_range = c(10, 11, 12, 1, 2, 3),
+           Tmins = c(-10:20),
+           Tmaxs = c(-5:30),
+           legend_label = "Chill/day (CP)")
+{
+# filter the sensitivity results for the month range we specified and create a new column with their names as factors.
+  cmst <- chill_model_sensitivity_table
+  cmst <- cmst[which(cmst$Month %in% month_range),]
+  cmst$Month_names <- factor(cmst$Month,
+                             levels = month_range,
+                             labels = month.name[month_range])  
+  
+  # plot the Tmin vs Tmax values and use the value for the temperature model as fill. 
+  DM_sensitivity<-
+    ggplot(cmst,
+           aes_string(x = "Tmin",
+                      y = "Tmax",
+                      fill = temp_model)) +
+    geom_tile() +
+    scale_fill_gradientn(colours = alpha(matlab.like(15),
+                                         alpha = .5),
+                         name = legend_label) +
+    xlim(Tmins[1],
+         Tmins[length(Tmins)]) +
+    ylim(Tmaxs[1],
+         Tmaxs[length(Tmaxs)])
+  
+  
+  temperatures<-
+    temperatures[which(temperatures$Month %in% month_range),]
+  
+  temperatures[which(temperatures$Tmax < temperatures$Tmin),
+               c("Tmax", 
+                 "Tmin")] <- NA
+  
+  temperatures$Month_names <-
+    factor(temperatures$Month,
+           levels = month_range,
+           labels = month.name[month_range])  
+  
+  DM_sensitivity +
+    geom_point(data = temperatures,
+               aes(x = Tmin,
+                   y = Tmax,
+                   fill = NULL,
+                   color = "Temperature"),
+               size = 0.2) +
+    facet_wrap(vars(Month_names)) +
+    scale_color_manual(values = "black",
+                       labels = "Daily temperature \nextremes (°C)",
+                       name = "Observed at site" ) +
+    guides(fill = guide_colorbar(order = 1),
+           color = guide_legend(order = 2)) +
+    ylab("Tmax (°C)") +
+    xlab("Tmin (°C)") + 
+    theme_bw(base_size = 15)
+
+}
+```
+This function I now use to first plot the chill sensivity.
+
+```{r}
+Dehesa_weather <- read_tab("Dehesa_temps.csv")
+
+Chill_sensitivity_temps(Model_sensitivities_Dehesa,
+                        Dehesa_weather,
+                        temp_model = "Dynamic_Model",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        legend_label = "Chill per day \n(Chill Portions)") +
+  ggtitle("Chill model sensitivity near Santa Olalla de Calla, Spain")
+```
+
+
+Here you can see the chill per day as chill portions for october till march at the latitude of the Dehesa San Francisco. Blue colors indicate low chill portions while brown indicate higher chill portions (up to 1).
+
+To plot the heat model sensitivity I just use the GDH model as input for my Chill_sensitivity_temps()-function.
+
+```{r}
+Chill_sensitivity_temps(Model_sensitivities_Dehesa,
+                        Dehesa_weather,
+                        temp_model = "GDH",
+                        month_range = c(12, 1:5),
+                        legend_label = "Heat per day \n(GDH)") +
+  ggtitle("Heat model sensitivity near Santa Olalla de Calla, Spain")
+```
+
+
+

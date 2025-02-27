@@ -1,0 +1,147 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# Chapter 31 The PhenoFLex model - a second
+
+```{r}
+library(chillR)
+library(tidyverse)
+```
+
+
+1. Make chill and heat response plots for the ‘Roter Boskoop’ PhenoFlex model for the location you did the earlier analyses for.
+
+To evaluate the temperature response of the PhenoFlex components by producing temperature response plots I can again use the workflow developed in chapter 25. As the PhenoFlex model works in a different way as the other models I have to adept the code a bit. Instead of calculating chilling portions with the dynamic model I compute chilling efficiency with the PhenoFlex model. In addition I calculate the heat efficiency, weight by the fitted parameters. 
+
+First I set up a function to weigh the GDH by the parameters Tb, Tu and Tc of the PhenoFlex Model.
+
+
+```{r}
+
+
+GDH_response <- function(T, par)
+  {Tb <- par[11]
+   Tu <- par[4]
+   Tc <- par[10]
+   GDH_weight <- rep(0, length(T))
+   GDH_weight[which(T >= Tb & T <= Tu)] <-
+     1/2 * (1 + cos(pi + pi * (T[which(T >= Tb & T <= Tu)] - Tb)/(Tu - Tb)))
+   GDH_weight[which(T > Tu & T <= Tc)] <-
+     (1 + cos(pi/2 + pi/2 * (T[which(T >  Tu & T <= Tc)] -Tu)/(Tc - Tu)))
+  return(GDH_weight)
+}
+```
+
+Now I make the described changes to the function of chapter 25 and run it.
+
+```{r,eval=FALSE}
+
+latitude <- 50.6
+
+month_range <- c(10, 11, 12, 1, 2, 3)
+
+Tmins = c(-20:20)
+Tmaxs = c(-15:30)
+
+mins <- NA
+maxs <- NA
+chill_eff <- NA
+heat_eff <- NA
+month <- NA
+
+simulation_par <- read_tab("data/PhenoFlex_parameters_Boskop.csv")[,2]
+
+for(mon in month_range)
+    {days_month <- as.numeric(difftime(ISOdate(2002, mon+1, 1),
+                                       ISOdate(2002, mon, 1)))
+     if(mon == 12) days_month <- 31
+     weather <- 
+       make_all_day_table(data.frame(Year = c(2002, 2002),                                   
+                                     Month = c(mon, mon),
+                                     Day = c(1, days_month),
+                                     Tmin = c(0, 0),
+                                     Tmax = c(0, 0)))
+     
+     for(tmin in Tmins)
+      for(tmax in Tmaxs)
+        if(tmax >= tmin)
+          {
+           hourtemps <- weather %>%
+             mutate(Tmin = tmin,
+                    Tmax = tmax) %>%
+             stack_hourly_temps(latitude = latitude) %>%
+             pluck("hourtemps", "Temp")
+           
+           chill_eff <- 
+             c(chill_eff,
+               PhenoFlex(temp = hourtemps,
+                         times = c(1: length(hourtemps)),
+                         A0 = simulation_par[7],
+                         A1 = simulation_par[8],
+                         E0 = simulation_par[5],
+                         E1 = simulation_par[6],
+                         Tf = simulation_par[9],
+                         slope = simulation_par[12],
+                         deg_celsius = TRUE,
+                         basic_output = FALSE)$y[length(hourtemps)] /
+                                            (length(hourtemps) / 24))
+           
+          heat_eff <- 
+            c(heat_eff,
+              cumsum(GDH_response(hourtemps,
+                                  simulation_par))[length(hourtemps)] /
+                                                 (length(hourtemps) / 24))
+          mins <- c(mins, tmin)
+          maxs <- c(maxs, tmax)
+          month <- c(month, mon)
+        }
+}
+
+results <- data.frame(Month = month,
+                      Tmin = mins,
+                      Tmax = maxs,
+                      Chill_eff = chill_eff,
+                      Heat_eff = heat_eff) %>%
+  filter(!is.na(Month))
+
+#saving the results
+
+write.csv(results,
+          "data/model_sensitivity_PhenoFlex.csv")
+```
+
+
+
+
+To plot the chill & heat efficiencies I use the Chill_sensitivity_temps function again, developed in chapter 25.
+
+```{r,eval=FALSE}
+Model_sensitivities_PhenoFlex <-
+  read.csv("data/model_sensitivity_PhenoFlex.csv")
+
+CKA_weather <- read_tab("data/TMaxTMin1958-2019_patched.csv")
+
+
+Chill_sensitivity_temps(Model_sensitivities_PhenoFlex,
+                        CKA_weather,
+                        temp_model = "Chill_eff",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        Tmins = c(-20:20),
+                        Tmaxs = c(-15:30),
+                        legend_label = "Chill per day \n(arbitrary)") +
+  ggtitle("PhenoFlex chill efficiency ('Roter Boskoop')")
+```
+
+```{r,eval=FALSE}
+Chill_sensitivity_temps(Model_sensitivities_PhenoFlex,
+                        CKA_weather,
+                        temp_model = "Heat_eff",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        Tmins = c(-20:20),
+                        Tmaxs = c(-15:30),
+                        legend_label = "Heat per day \n(arbitrary)") +
+  ggtitle("PhenoFlex heat efficiency ('Roter Boskoop')")
+```
+

@@ -1,0 +1,95 @@
+# Chapter 26 Evaluating PLS outputs
+
+1. Reproduce the analysis for the ‘Roter Boskoop’ dataset.
+
+In chapter 26 the chilling and forcing requirements of the "Alexander Lucas" pear at Campus Klein Altendorf were analysed. As approxis for the agroclimatic needs of the trees the mean amounts of chill and heat that were accumulated during the chilling and forcing phases were used. For evaluating of the error the standard deviations were used. In addition the response of the cultivar to seasonal temperature was analysed by producing temperature response plots.
+
+To calculate the chill and heat accumulated during the chilling and forcing phases for "Roter Boskoop" apples at Campus Klein Altendorf I use the tempResponse()-function again. As input for the chill and heat phases I will use the days I delineated in chapter 23.
+
+```{r}
+# load and transform the required data.
+temps <- read_tab("data/TMaxTMin1958-2019_patched.csv")
+temps_hourly <- temps %>%
+  stack_hourly_temps(latitude = 50.6)
+
+Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, 
+         JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+```
+
+
+
+```{r}
+# specify the delineated chill & heat phases
+
+chill_phase <- c(339, 67)
+heat_phase <- c(10, 126)
+
+# calculate chill accumulation.
+
+chill <- tempResponse(hourtemps = temps_hourly,
+                      Start_JDay = chill_phase[1],
+                      End_JDay = chill_phase[2],
+                      models = list(Chill_Portions = Dynamic_Model),
+                      misstolerance = 10)
+
+# calculate heat accumulation
+
+heat <- tempResponse(hourtemps = temps_hourly,
+                     Start_JDay = heat_phase[1],
+                     End_JDay = heat_phase[2],
+                     models = list(GDH = GDH))
+```
+
+
+Now I can estimate the chill & heat requirements by calculate the mean accumulations and evaluate the error by computing the standard deviations.
+
+```{r}
+chill_requirement <- mean(chill$Chill_Portions)
+chill_req_error <- sd(chill$Chill_Portions)
+
+heat_requirement <- mean(heat$GDH)
+heat_req_error <- sd(heat$GDH)
+```
+```{r, eval=FALSE}
+chill_requirement
+chill_req_error
+
+heat_requirement
+heat_req_error
+```
+The chillilling requirement is about 60.3 Chill Portions. The error estimated is 7.3 CP.
+
+The forcing reqirement are ~6243 GDH, while the error is at ~1806 GDH.
+
+To analyse the impacts of chilling and forcing temperatures on the phenology of Roter Boskop I create temperature response plots using the make_pheno_trend_plot()-function that is contained in chillR. The tool creates plots that show the phenology response  to temperatures during two phases plots (ebd. chillR) 
+
+```{r}
+chill_phase <- c(-26, 67)
+heat_phase <- c(10, 126)
+
+
+mpt <- make_pheno_trend_plot(weather_data_frame = temps,
+                             pheno = Boskop,
+                             Start_JDay_chill = chill_phase[1], 
+                             End_JDay_chill = chill_phase[2],
+                             Start_JDay_heat = heat_phase[1],
+                             End_JDay_heat = heat_phase[2],
+                             outpath = "data/",
+                             file_name = "pheno_trend_plot",
+                             plot_title =  "Impacts of chilling and forcing temperatures on Roter Boskoop phenology",
+                             image_type = "png", 
+                             colorscheme = "normal")
+```
+Looking at the plot we can see a linear correlation between blooming dates and temperatures during chill and force periods. The latest bloom can be seen for low mean temperatures for chilling and forcing phase, while the earliest bloom can be seen for high mean temperatures for both. 
+
+2. We’ve looked at data from a number of locations so far. How would you expect this surface plot to look like in Beijing? And how should it look in Tunisia?
+
+For Beijing I would expect a relatively similar pattern to CKA, as the temperatures are similar. In Tunisia earlier bloom dates should occur with lower temperatures during the chilling phase, as the temperatures in Tunisia are in general relatively high. 

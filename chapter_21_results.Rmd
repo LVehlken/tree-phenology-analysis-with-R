@@ -1,0 +1,37 @@
+
+To delineate temperature response phases with PLS regression we can use the PLS_pheno()- tool in chillR. 
+```{r}
+library(chillR)
+#as the first step we convert the first bloom dates to Julian dates
+
+Roter_Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+```
+We also import the weather data and also assign Julian dates.
+```{r}
+Dehesa_temps <- read_tab("data/TMaxTMin1958-2019_patched.csv") %>%
+  make_JDay
+```
+In the next step we conduct the PLS regression using the PLS_pheno function.
+```{r}
+PLS_results <- PLS_pheno(Dehesa_temps,
+                         Roter_Boskop)
+
+
+```
+The function produces a list containing two data frames. The results are contained in the PLS_summary data.frame, which we can now plot using the plot_PLS()-function. 
+
+```{r}
+plot_PLS(PLS_results, "data/pls_roter_boskoop")
+```
+
+
+
+

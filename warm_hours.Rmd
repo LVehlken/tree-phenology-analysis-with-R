@@ -1,0 +1,79 @@
+```{r}
+library(chillR)
+Winters_hours_gaps
+```
+
+
+
+
+# Basic function that calculates warm hours
+
+```{r}
+# defining function WH to "calculate" which hours from a dataset, containing the column "Temp", are above 25°
+
+WH <- function(data_set)
+{
+  data_set[,"Warm_Hour"] <- 
+    data_set$Temp > 25
+  return(data_set)
+}
+```
+
+# Applying the function to the "Winter_hours_gaps" dataset
+
+```{r}
+# exporting the columns year, month, day, hour & temp to a new data.frame"
+
+hourtemps <- Winters_hours_gaps[, c("Year",
+                                    "Month",
+                                    "Day",
+                                    "Hour",
+                                    "Temp")]
+
+
+# specify the dataset for the function
+
+data_set <- hourtemps
+
+# apply the function
+
+WH(data_set)
+
+
+
+```
+
+```{r}
+WH_sum <- function(data_set,
+                   Start_YEARMODAHO,
+                   End_YEARMODAHO)
+{
+  Start_Year <- trunc(Start_YEARMODAHO / 10000) # "trunc" removes all decimals
+  Start_Month <-
+    trunc((Start_YEARMODAHO - Start_Year*10000) / 100)
+  Start_Day <- 
+    Start_YEARMODAHO - Start_Year * 10000 - Start_Month * 100
+  Start_Hour <- 12 # This could also be flexible, but let's skip this for now
+  End_Year <- trunc(End_YEARMODAHO / 10000)
+  End_Month <- trunc((End_YEARMODAHO - End_Year * 10000) / 100)
+  End_Day <- End_YEARMODAHO - End_Year * 10000 - End_Month * 100
+  End_Hour <- 12 # This could also be flexible, but let's skip this for now
+
+  Start_YEARMODAHO <- which(data_set$Year == Start_Year &
+                        data_set$Month == Start_Month &
+                        data_set$Day == Start_Day &
+                        data_set$Hour == Start_Hour)
+  End_YEARMODAHO <- which(data_set$Year == End_Year &
+                    data_set$Month == End_Month &
+                    data_set$Day == End_Day &
+                    data_set$Hour == End_Hour)
+
+  Warm_hours <- WH(data_set)
+  
+  return(sum(Warm_hours$Warm_Hour[Start_YEARMODAHO:End_YEARMODAHO]))
+
+}
+WH_sum(data_set, 20080501, 20080711)
+```
+
+

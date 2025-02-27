@@ -1,0 +1,4 @@
+#chapter 20
+Provide a brief narrative description what p-hacking is and why this is a problematic approach to data analysis.
+
+  P-hacking is when researchers try to find the lowest p-values in their dataset, suggesting higher correlations, regardless if there really is a causal correlation between the variables. This leads to biased publications.

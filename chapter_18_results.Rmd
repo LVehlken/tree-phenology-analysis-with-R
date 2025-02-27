@@ -1,0 +1,319 @@
+```{r}
+library(kableExtra)
+library(chillR)
+library(tidyverse)
+library(ggpmisc)
+library(patchwork)
+```
+
+# Chapter 18 Plotting future Scenarios
+
+Produce similar plots for the weather station you selected for earlier exercises.
+
+As you may have noticed the analysed plots produced with the inbuilt chillR functions are not very clear. To produce clearer plots we can use ggplot, which has already a build in function in chillR.
+For the plots I will use the scenario data that I produced recently
+
+```{r}
+# import the chill scenario data and partly store it as lists with the load_temperature_scenarios(). The lists can be used as input now. 
+
+chill_hist_scenario_list <- load_temperature_scenarios("data",
+                                                       "Dehesa_hist_chill_305_59")
+actual_chill <- read_tab("data/Dehesa_observed_chill_305_59.csv")
+
+chill_future_scenario_list <- load_temperature_scenarios("future_climate","Dehesa_futurechill_305_59")
+
+# using the make_climate_scenario() function to create climate scenarios for plotting. The function uses climate metric data that is stored in lists. I use the list I just generated.
+
+chills <- make_climate_scenario(
+  chill_hist_scenario_list,
+  caption = "Historic",
+  historic_data = actual_chill,
+  time_series = TRUE)
+
+# filtering the data for the scenarios
+SSPs <- c("ssp126", "ssp245", "ssp370", "ssp585")
+Times <- c(2050, 2085)
+
+list_ssp <- 
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(2) %>%
+  unlist()
+
+list_gcm <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(3) %>%
+  unlist()
+
+list_time <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(4) %>%
+  unlist()
+
+
+for(SSP in SSPs)
+  for(Time in Times)
+    {
+    
+    # find all scenarios for the ssp and time
+    chill <- chill_future_scenario_list[list_ssp == SSP & list_time == Time]
+    names(chill) <- list_gcm[list_ssp == SSP & list_time == Time]
+    if(SSP == "ssp126") SSPcaption <- "SSP1"
+    if(SSP == "ssp245") SSPcaption <- "SSP2"
+    if(SSP == "ssp370") SSPcaption <- "SSP3"
+    if(SSP == "ssp585") SSPcaption <- "SSP5"    
+    if(Time == "2050") Time_caption <- "2050"
+    if(Time == "2085") Time_caption <- "2085"
+    chills <- chill %>% 
+      make_climate_scenario(
+        caption = c(SSPcaption,
+                    Time_caption),
+        add_to = chills)
+}
+```
+
+For ggplot using the data.frame format is recommended. Therefore I loop through our chill projection list and extract the data. First I do it for the historic data.
+```{r}
+
+
+for(nam in names(chills[[1]]$data))
+  {
+   # Extract the data frame.
+   ch <- chills[[1]]$data[[nam]]
+   # Add columns for the new information we have to add and fill them.
+   ch[,"GCM"] <- "none"
+   ch[,"SSP"] <- "none"
+   ch[,"Year"] <- as.numeric(nam)
+   
+   # Now check if this is the first time we've gone through this loop.
+   # If this is the first time, the ch data.frame becomes the output
+   # object (past_simulated).
+   # If it is not the first time ('else'), we add the current data.frame
+   # to the 'past_simulated' object
+  if(nam == names(chills[[1]]$data)[1])
+    past_simulated <- ch else
+      past_simulated <- rbind(past_simulated,
+                              ch)
+  }
+
+# Add another column called 'Scenario' and label all rows as 'Historical' 
+past_simulated["Scenario"] <- "Historical"
+
+kable(head(past_simulated))  %>%
+  kable_styling("striped", position = "left",font_size = 8)
+```
+To add the historic observations to my data I create a pointer.
+```{r}
+past_observed <- chills[[1]][["historic_data"]]
+```
+In the next step I loop through the future data and add it to the list.
+```{r}
+# Extract future data
+for(i in 2:length(chills))
+  for(nam in names(chills[[i]]$data))
+    {ch <- chills[[i]]$data[[nam]]
+     ch[,"GCM"] <- nam
+     ch[,"SSP"] <- chills[[i]]$caption[1]
+     ch[,"Year"] <- chills[[i]]$caption[2]
+     if(i == 2 & nam == names(chills[[i]]$data)[1])
+       future_data <- ch else
+         future_data <- rbind(future_data,ch)
+  }
+```
+Now I can plot the data. Therefore I combine multiple plots using the plot_layout()-function, that is contained in the patchwork package. To prevent axis scales due to variation in the data I set the scales using the range() function.
+
+```{r}
+metric <- "GDH"
+axis_label <- "Heat (in GDH)"
+
+# get extreme values for the axis scale
+
+rng <- range(past_observed[[metric]],
+             past_simulated[[metric]],
+             future_data[[metric]]) 
+```
+Now I first produce a plot for the historic data. Therefore I generate box plots of the simulated historic data and combine them with a scatter plot of the observed historic data.
+
+```{r}
+past_plot <- ggplot() +
+  geom_boxplot(data = past_simulated,
+               aes_string("as.numeric(Year)", metric, group = "Year"),
+               fill = "skyblue",
+               width = 0.9) +  # Increased boxplot width
+  scale_y_continuous(limits = c(0, round(rng[2] + rng[2]/10))) +
+  labs(x = "Year", y = axis_label) +
+  facet_grid(~ Scenario) +
+  theme_bw(base_size = 15) +
+  geom_point(data = past_observed,
+             aes_string("End_year", metric),
+             col = "blue") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+past_plot
+```
+
+Next I produce the future scenarios for the years 2050 and 2085 and combine them.
+
+```{r}
+future_plot_list <- list()
+
+time_points <- c(2050, 2085)
+
+for(y in time_points)
+{
+  future_plot_list[[which(y == time_points)]] <-
+    ggplot(data = future_data[which(future_data$Year==y),]) +
+    geom_boxplot(aes_string("GCM",
+                            metric,
+                            fill="GCM")) +
+    facet_wrap(vars(SSP), nrow = 1) +
+    scale_x_discrete(labels = NULL,
+                     expand = expansion(add = 1)) +
+    scale_y_continuous(limits = c(0, 
+                                  round(round(1.1*rng[2])))) +
+    geom_text_npc(aes(npcx = "center",
+                      npcy = "top", 
+                      label = Year),
+                  size = 5) +
+    theme_bw(base_size = 15) +
+    theme(axis.ticks.y = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          legend.position = "bottom",
+          legend.margin = margin(0, 
+                                 0, 
+                                 0, 
+                                 0, 
+                                 "cm"),
+          legend.background = element_rect(),
+          strip.background = element_blank(),
+          strip.text = element_text(face = "bold"),
+          legend.box.spacing = unit(0, "cm"),
+          plot.subtitle = element_text(
+            hjust = 0.5,
+            vjust = -1,
+            size = 15 * 1.05,
+            face = "bold")) 
+}
+
+future_plot_list
+```
+In the end I combine all produced plots.
+```{r}
+both_plots <- past_plot + future_plot_list
+
+plot <- both_plots +
+           plot_layout(guides = "collect",
+                       widths = c(1,rep(2,length(future_plot_list))))
+
+plot <- plot & theme(legend.position = "bottom",
+                     legend.text = element_text(size=8),
+                     legend.title = element_text(size=10),
+                     axis.title.x = element_blank())
+
+plot
+```
+
+I also have to produce plots for Chill Portions and Frost duration. For faster plotting of these and in the future I wrap up the code produced previously into a function
+
+```{r}
+plot_scenarios_gg <- function(past_observed,
+                              past_simulated,
+                              future_data,
+                              metric,
+                              axis_label,
+                              time_points)
+{
+  rng <- range(past_observed[[metric]],
+               past_simulated[[metric]],
+               future_data[[metric]])  
+  past_plot <- ggplot() +
+    geom_boxplot(data = past_simulated,
+                 aes_string("as.numeric(Year)",
+                            metric,
+                            group="Year"),
+                 fill="skyblue") +
+    scale_y_continuous(limits = c(0, 
+                                  round(round(1.1*rng[2])))) +
+    labs(x = "Year", y = axis_label) +
+    facet_grid(~ Scenario) +
+    theme_bw(base_size = 15) +  
+    theme(strip.background = element_blank(),
+          strip.text = element_text(face = "bold"),
+          axis.text.x = element_text(angle=45, 
+                                     hjust=1)) +
+    geom_point(data = past_observed,
+               aes_string("End_year",
+                          metric),
+               col="blue")
+  
+  future_plot_list <- list()
+  
+  for(y in time_points)
+  {
+    future_plot_list[[which(y == time_points)]] <-
+      ggplot(data = future_data[which(future_data$Year==y),]) +
+      geom_boxplot(aes_string("GCM", 
+                              metric, 
+                              fill="GCM")) +
+      facet_wrap(vars(SSP), nrow = 1) +
+      scale_x_discrete(labels = NULL,
+                       expand = expansion(add = 1)) +
+      scale_y_continuous(limits = c(0, 
+                                    round(round(1.1*rng[2])))) +
+      geom_text_npc(aes(npcx = "center",
+                        npcy = "top",
+                        label = Year),
+                    size = 5) +
+      theme_bw(base_size = 15) +
+      theme(axis.ticks.y = element_blank(),
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            legend.position = "bottom",
+            legend.margin = margin(0,
+                                   0, 
+                                   0, 
+                                   0, 
+                                   "cm"),
+            legend.background = element_rect(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"),
+            legend.box.spacing = unit(0, "cm"),
+            plot.subtitle = element_text(hjust = 0.5,
+                                         vjust = -1,
+                                         size = 15 * 1.05,
+                                         face = "bold")) 
+  }
+  
+  plot <- (past_plot +
+             future_plot_list +
+             plot_layout(guides = "collect",
+                         widths = c(1,rep(2,length(future_plot_list))))
+           ) & theme(legend.position = "bottom",
+                     legend.text = element_text(size = 8),
+                     legend.title = element_text(size = 10),
+                     axis.title.x=element_blank())
+  plot
+  
+}
+```
+
+```{r}
+plot_scenarios_gg(past_observed = past_observed,
+                  past_simulated = past_simulated,
+                  future_data = future_data,
+                  metric = "Chill_Portions",
+                  axis_label = "Chill (in Chill Portions)",
+                  time_points = c(2050, 2085))
+```
+
+```{r}
+plot_scenarios_gg(past_observed = past_observed,
+                  past_simulated = past_simulated,
+                  future_data = future_data,
+                  metric = "Frost_H",
+                  axis_label = "Frost duration (in hours)",
+                  time_points = c(2050, 2085))
+```
+
