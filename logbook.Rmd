@@ -1,0 +1,2390 @@
+---
+
+output:
+  pdf_document: default
+  html_document: default
+
+---
+
+
+# <Tree phenology analysis with R>
+
+## <Learning logbook Leon Vehlken>
+
+  this learning logbook records my learning as well as my coding work  during the seminar "regarding phenology analysis with R". The seminar is based on the chillR package that was developed by Prof. Dr. Eike Lüdeling.  The 
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+library(tidyverse)
+library(magrittr)
+library(kableExtra)
+```
+
+# Chapter 3 Tree dormancy
+
+chapter three was about the 
+
+1. Put yourself in the place of a breeder who wants to calculate the temperature requirements of a newly released cultivar. Which method will you use to calculate the chilling and forcing periods? Please justify your answer.
+
+    To calculate the temperature requirements of a newly released cultivar I would use the statistical     approach. During resesearch, normaly phenological data is collected for cultivares. Therefore         there should already be phenological data (flowering dates) available for the new cultivar.This       data can be related to previous temperature records, using the Partial Less Square regression         analysis to calculate chilling and forcing periods. Compared to other strategies, e.g. setting up     an experiment with the cultivar to gather own empirical data for the temperature requirements, the     statistical approach is faster and has lower expenses. 
+     
+2. Which are the advantages (2) of the BBCH scale compared with earlier scales?
+
+    Compared to earlier scales the growth stages can easily be recognized under field conditions with     the BBCH scale. Furthermore the stages are graded in the order of their appereance.
+    
+3. Classify the following phenological stages of sweet cherry according to the BBCH scale:
+
+```{r, echo=FALSE, out.width="50%"}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/flowering_stages.png")
+```
+
+    On picture one (left) you can see the BBCH stage 57. The main stage is 50, reproductive              development or influence emergence. The stage is 57 as the sepals are open but they don't form       balloons yet. On picture two (middle) you can see the BBCH stage 65. The main stage is 60,           flowering, while the stage is 65. Full flowering as more than 40% percents of the flower is open.     On the third picture the BBCH stage 85 can be seen. The cherries are in the ripening or maturity     stage (80). The coloring is advanced but too light for a ripe fruit. Therefore it is in the stage     85.
+
+# Chapter 4 Climate change and impact projection
+
+# Chapter 5 Winter chill projections
+
+chapter 5 was about winter chill projections and gave an overview of how winter chill can be modeled and showed the problems and challenges that had to be overcome to create state-of-the-art chill models. 
+
+In that context we had to answer the following questions:
+
+
+1. Sketch out three data access and processing challenges that had to be overcome in order to produce chill projections with state-of-the-art methodology.
+
+    One challenge that had to be overcome and is still problematic is the model choice. For the same      location different chill models generate very different results and therefore it is hard to           distinguish which one produces meaningful results. 
+    Another challenge that had to be overcome was to find feature climate data that is suitable for       chill modelling. While there is a lot of feature climate data the data is most of the time stored     in grids for the whole world which leads to hugh data amounts that can't really be handled. By the     time weather generatores for specific region were developed, allowing to get data easier.
+    Most climate data was in the daily format, while for chill modeling hourly temperature is needed.     The used methods to derive hourly temperature data from daily temperature data were not optimal       and had to be overcome.
+
+2. Outline, in your understanding, the basic steps that are necessary to make such projections.
+
+    The first step is to get climate projection data for your area of interest (AOI). Therefore you       can model future climate data on your own using weather generators, based on reliable weather         station data from your AOI. An alternative is to use climate model data provided by others like       the AFRICLIM and extract the data for your AOI.                                                       The second step is to choose one (wisely) or more Chill models to model the impacts of climate        change on winter chill
+    In a third step, for the results you generated you calculate metrics like 'Safe Winter Chill'         (10^th percentile of the chill distribution) and condense them to enable the data for analysis. 
+
+# Chapter 6 Manual chill analysis
+
+
+
+1. Write a basic function that calculates warm hours (>25°C)
+
+To write the function we use the function() tool of R, which provides the base mechanisms for defining new functions.
+
+
+```{r}
+
+# Basic function that calculates warm hours from a given data set, here the Winter_hours_gaps data set. The function can later be used to calculate warm hours for any data set (with the needed data) 
+
+
+## defining function WH to identify which hours from a data set are above 25°C. The function WH() can be run by an argument that contains a data set. The data set needs a column "Temp" that has hourly temperature data. The function creates the new colum "Warm_Hour" in the dataset in checks for every row if the value of Temp is above 25. If it is above 25 it creates a new vector TRUE or FALSE
+
+WH <- function(data_set)
+{
+  data_set[,"Warm_Hour"] <- 
+    data_set$Temp > 25
+  return(data_set)
+}
+
+```
+
+2. Apply this function to the Winters_hours_gaps dataset
+
+
+    Our new created function we can just apply to the Winters_hours_gaps dataset by using the data      set name as an argument. The Winters_hours_gaps data set is included in the chillR package,         therefore I first load it using the library()-function. In Addition I load the tidyverse-package     which contains a lot of useful packages I need later, e.g. ggplot2 for plotting results.
+    
+```{r, message=FALSE, warning=FALSE}
+library(chillR)
+library(tidyverse)
+```
+
+
+```{r}
+# Applying the function to the "Winter_hours_gaps" dataset. By using the argument [1:8,] behind the function we restrict the function to the rows 1 to 8, as I'm not interested for the whole output. 
+WH(Winters_hours_gaps)[1:8,]
+```
+
+3. Extend this function, so that it can take start and end dates as inputs and sums up warm hours between these dates
+
+    To extent the function to sum up warm hours between start and end dates I give my warm hours function two new arguments, the start and the end date. For that I use the YEARMODA format. I generate a YEARMODA value for every row of my dataset, identify the warm hours by using my warm hours function and sum up the warm hours for the rows where the YEARMODA value is between the values of my start and end date arguments. 
+    
+```{r, results='hide'}
+
+
+
+# generating a function that calculate the sum for all warm hours for a given data set between two specified dates. 
+
+WH_sum <- function(data_set,
+                   Start_YEARMODAHO,
+                   End_YEARMODAHO)
+  
+  # As my data only contains columns for year, month and day, the first step is to compute the YEARMODA value for every row.
+{
+  Start_Year <- trunc(Start_YEARMODAHO / 10000) # "trunc" removes all decimals
+  Start_Month <-
+    trunc((Start_YEARMODAHO - Start_Year*10000) / 100)
+  Start_Day <- 
+    Start_YEARMODAHO - Start_Year * 10000 - Start_Month * 100
+  Start_Hour <- 12 
+  End_Year <- trunc(End_YEARMODAHO / 10000)
+  End_Month <- trunc((End_YEARMODAHO - End_Year * 10000) / 100)
+  End_Day <- End_YEARMODAHO - End_Year * 10000 - End_Month * 100
+  End_Hour <- 12 
+
+  Start_YEARMODAHO <- which(data_set$Year == Start_Year &
+                        data_set$Month == Start_Month &
+                        data_set$Day == Start_Day &
+                        data_set$Hour == Start_Hour)
+  End_YEARMODAHO <- which(data_set$Year == End_Year &
+                    data_set$Month == End_Month &
+                    data_set$Day == End_Day &
+                    data_set$Hour == End_Hour)
+
+  Warm_hours <- WH(data_set)
+  # to calculate the sum of the warm hours I now sum the values of the Warm_hours column for the rows where the YEARMODA value is between the values specified by Start_YEARMODAHO & End_YEARMODAHO
+  return(sum(Warm_hours$Warm_Hour[Start_YEARMODAHO:End_YEARMODAHO]))
+
+}
+
+# run the function to calculate the amount of warm hours between the 01.05.2008 and the 11.07.2008
+WH_sum(Winters_hours_gaps, 20080501, 20080711)
+```
+
+Between the 01.05.2008 and the 11.07.2008 we had 479 warm hours. 
+
+# Chapter 7 Chill models
+
+1. Run the chilling() function on the Winters_hours_gap dataset
+
+    The chilling() tool of the chillR package can be used to calculate the four horticultural chill       metrics Chilling Hours, Chilling Units (based on Utah Model), Chill Portions (based on Dynamic       Model) and Growing Degree Hours. As input it needs a dataset with hourly temperatures with Julian     days. The start and end days of the calculation can be specified. For the Winters_hours_gaps         dataset we compute them for the Julian days 90 to 100.
+    
+```{r}
+output <- chilling(make_JDay(Winters_hours_gaps),
+                   Start_JDay = 90,
+                   End_JDay = 100)
+
+kable(output) %>%
+  kable_styling("striped",
+                position = "left",
+                font_size = 10)
+```
+
+```{r}
+head(output)
+```
+
+
+2. Create your own temperature-weighting chill model using the step_model() function & 3. Run this model on the Winters_hours_gaps dataset using the tempResponse() function
+
+    The chilling()-function is limitted to the four metrics described above. With the                    tempResponse()-function of chillR you can calculate metrics for models that you specify in a         list, allowing to use your own model. As exampel we create our own climate model using a step        model. A step model applies to a given vector (x) the step function that is specified in a data      frame (df).
+
+
+```{r}
+
+custom <- function(x) step_model(x, df)
+
+#the data frame used consists of three columns. The lower column specifies the lower bound of the temperature interval, while the upper column specifies the upper bound. The weight column specifies the value that is assigned to the temperature falling into the specific temperature interval.
+
+df<-data.frame(
+  lower= c(-1000, 2,4, 6, 8, 10,    12),
+  upper= c(    2, 4, 6, 8, 10, 12, 1000),
+  weight=c(    0, 1, 2, 3, 2, 1,    0))
+
+
+
+# The model we can then use with the tempResponse function
+output <- tempResponse(make_JDay(Winters_hours_gaps),
+                       Start_JDay = 90,
+                       End_JDay = 100,
+                       models = list(custom = custom))
+
+kable(output) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+
+#Chapter 8 Making hourly temperatures
+
+
+
+1. Choose a location of interest, find out its latitude and produce plots of daily sunrise, sunset and daylength
+
+The location of interest is the Dehesa San Francisco (37°52' N,6°14' W; 445 m) in the south-west of the Iberian Peninsula. 
+
+```{r, echo=FALSE, out.width="50%"}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/Dehesa.png")
+```
+The area covers 516 ha and is characterised by north- and south-facing slopes.
+According to the climate classification of Köppen-Geiger, the climate falls into the class Csa with winter rainfall and dry, hot summers (Kottek et al., 2006: 261).
+
+To plot the daily sunrise, sunset and daylengeth we first compute them for the days 1 to 365 of a year at the latitude of the Dehesa San Francisco, using the daylength() tool from the ChillR package and save them to the object "Days". 
+
+```{r}
+Days <- daylength(latitude = 37.881017 , JDay = 1:365)
+
+
+## In a second step we create a data.frame() with the columns Sunrise, Sunset, Daylength and JDay from the Days object, as we want to plot the data with ggplot
+Days_df <-
+  data.frame(
+    JDay = 1:365,
+    Sunrise = Days$Sunrise,
+    Sunset = Days$Sunset,
+    Daylength = Days$Daylength
+  )
+
+# using the pivot_longer function 
+Days_df <- pivot_longer(Days_df,cols=c(Sunrise:Daylength))
+
+ggplot(Days_df, aes(JDay, value)) +
+  geom_line(lwd = 1.5) +
+  facet_grid(cols = vars(name)) +
+  ylab("Time of Day / Daylength (Hours)") +
+  theme_bw(base_size = 20)
+```
+2. Produce an hourly dataset, based on idealized daily curves, for the KA_weather dataset (included in chillR). 
+
+Instead of the KA_weather data set I used a data set with temperature records for the Dehesa San Francisco for this task. (http://www.juntadeandalucia.es/agriculturaypesca/fitEmaWeb/faces/pages/infoEstacion.xhtml?id=102)
+
+To compute chill hours we are dependent on hourly temperature data. Nevertheless, for many locations only daily minimum and maximum temperatures are available. Different statistical approaches enable us to caluculate hourly temperature data from daily data sets. For locations with a flat relief idialized temperature curves can be computed, based on the times of sunrise & sunset and the daylength. 
+
+```{r}
+
+#first we import the climate data using the read.csv() function
+
+Dehesa_weather <- read.csv("D:/DatenVehlken/Sciebo/Uni/Geographie/Bachelor/Bachelorarbeit/Daten/KlimadatenDehesa3.csv")
+```
+
+To generate hourly data from the daily data data set we use the stack_hourly_temps() function that calculates the hourly temperatures using the daily dynamics (Sunrise, Sunset, Day length) and idealized daily curves.
+```{r}
+Dehesa_hourly <- stack_hourly_temps(Dehesa_weather,
+                                    latitude=37.881017,
+                                    keep_sunrise_sunset = TRUE)
+```
+
+The produced data.frame has single columns for year, month, day and hour. As I want to plot the hourly temperatures by date I have to aggregate the date from these columns. Therefore the ISOdate() function is used. 
+
+```{r}
+Dehesa_hourly$hourtemps[, "DATE"] <-
+  ISOdate(
+    Dehesa_hourly$hourtemps$Year,
+    Dehesa_hourly$hourtemps$Month,
+    Dehesa_hourly$hourtemps$Day,
+    Dehesa_hourly$hourtemps$Hour
+  ) 
+```
+
+
+### 3. Produce empirical temperature curve parameters for the Winters_hours_gaps dataset, and use them to predict hourly values from daily temperatures.
+
+As mentioned above the idealized temperature curve approach only works for areas with flat relief. For areas with high relief energy (e.g. the area of the Dehesa San Francisco) they don't work as they are shaded by rocks ,etc. for parts of the day. For those regions empirical temperature curves have to be generated, which rely on observed hourly temperature data.
+
+With the Empirical_daily_temperature_curve() function we can derive an empirical daily temperature curve from the dataset with observed hourly temperatures. The function produces a table with typical temperatures coefficients for every hour for every month. These coefficients can again be used together with daily minimum and maximum temperature to generate hourly temperate data that is based on the empirical relationship between them, using the Empirical_hourly_temperatures() function.
+
+```{r}
+
+# First we derive the empirical daily temperature curve.
+
+coeffs <- Empirical_daily_temperature_curve(Winters_hours_gaps)
+
+# As the winters_hours_gaps dataset only provides hourly data we first calculate Tmin and Tmax using the make_all_day_table() function. 
+
+
+Winters_daily <-
+  make_all_day_table(Winters_hours_gaps, input_timestep = "hour")
+
+# We now can use the coefficients and the daily Tmin & Tmax as input to compute the empirical hourly temperatures.
+
+Winters_hours <- Empirical_hourly_temperatures(Winters_daily, coeffs)
+
+Winters_hours[, "DATE1"] <-
+  ISOdate(Winters_hours$Year,
+          Winters_hours$Month,
+          Winters_hours$Day,
+          Winters_hours$Hour)
+
+Winter_hours_plot <- Winters_hours[100:200,]
+
+# now we can easily plot the results
+
+ggplot(data = Winter_hours_plot, aes(DATE1, Temp, colour = "RED")) +
+  geom_line(lwd = 1.3) + ylab("Temperature (°C)") + xlab("Date")
+
+```
+
+# Chapter 9 
+
+Based on the Winters_hours_gaps dataset, use magrittr pipes and functions of the tidyverse to accomplish the following:
+
+
+        a. Convert the dataset into a tibble
+        b. Select only the top 10 rows of the dataset
+        c. Convert the tibble to a long format, with separate rows for Temp_gaps and Temp
+        d. Use ggplot2 to plot Temp_gaps and Temp as facets (point or line plot)
+        e. Convert the dataset back to the wide format
+        f. Select only the following columns: Year, Month, Day and Temp
+        g. Sort the dataset by the Temp column, in descending order
+        
+# a 
+first we convert our data.frame into a tibble using the as_tibble function. A tibble is an improved version of the data.frame.
+```{r}
+
+require(chillR)
+
+library(tidyverse)
+
+WHG_tibble <- as_tibble(Winters_hours_gaps)
+
+kable(head(WHG_tibble, 7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+
+```
+
+# b
+With the same function we can convert the first ten rows of the data set to a new tibble by specifying the rows in the bracket [1:10, ].
+
+```{r}
+WHG_ten_rows <- as_tibble(WHG_tibble[1:10, ])
+kable(head(WHG_ten_rows,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+# c
+Our data set has separate columns for temperature (Temp) and temperature gaps (Temp_gaps). Using the pivot_longer together with magrittr pipes (%>%) we can aggregate the two columns into distinct rows.
+```{r}
+WHGlong <- WHG_tibble %>% pivot_longer(cols = Temp_gaps:Temp)
+kable(head(WHGlong,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+# d
+Ggplot is a plotting tool for R allowing to create highly customized plots. Here we create scatter plot for the converted tibble.
+```{r}
+ggplot(data = WHGlong, mapping = aes(x = Hour, y = value, color = name)) +
+  geom_point() + # Use geom_point() for scatterplot instead
+  labs(title = "Temperature and Temperature Gaps Over Time",
+       x = "Hour",
+       y = "Value") +
+  theme_minimal()
+```
+
+# e
+With the pivot_wider() function we can convert our tibble in the long format back to the wide format it was originally stored in.
+```{r}
+WHGwide <- WHGlong %>% pivot_wider(names_from = name,
+                                   values_from = value) 
+WHGwide <- WHGlong %>% pivot_wider() 
+
+kable(head(WHGwide,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+# f
+The select()-function can be used to select specific columns of interest from a data set. 
+```{r}
+# select
+WHGwide %>% select(c(Year, Month, Day, Temp))
+```
+
+# g. 
+With the arrange() function we can rearrange our data. Here we sort it by temperature by descending order.
+
+```{r}
+WHGwide %>% arrange(desc(Temp))
+
+kable(head(WHGwide,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+#2. For the Winter_hours_gaps dataset, write a for loop to convert all temperatures (Temp column) to degrees Fahrenheit
+
+Loops can be used to run the same action again for a specified data range instead of doing the same tasks manually, saving a lot of time. In R loops can be performed using the for(variable in vector){expression}-function. This function performs for every variable in a vector the expression specified in {}.
+```{r}
+# The following loop converts for every variable(i) in the rows 1 to the last row of the table WHGwide  the temperature in °C to the temperature in Fahrenheit
+
+for (i in 1:nrow(WHGwide)) {
+  WHGwide$Temp[i] <- WHGwide$Temp[i] * (9/5) + 32
+}
+
+# Print the updated dataset
+kable(head(WHGwide,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+#3. Execute the same operation with a function from the apply family
+
+The same conversion can be done by using the sapply(vector, function) function. The function applies to every vector a specified function. 
+
+```{r}
+
+WHGwide$Temp <- sapply(WHGwide$Temp, function(temp) temp * (9/5) + 32)
+
+# Print the updated dataset
+kable(head(WHGwide,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+#4. Now use the tidyverse function mutate to achieve the same outcome
+
+The same can be done by using the mutate()-function, following the same principle.
+```{r}
+
+WHGwide <- WHGwide %>%
+  mutate(Temp = Temp * (9/5) + 32)
+
+# Print the updated dataset
+kable(head(WHGwide,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+```
+
+# chapter 10
+
+# chapter 10
+
+1. Choose a location of interest and find the 25 closest weather stations using the handle_gsod function
+
+For chill modelling we are dependent on temperature data for our area of interest. An straight forward way to access this data is to download it from the Global Summary of the Day (GSOD) database, using the handle_gsod() function provided by the chillR package. For that it has four action types: "list_stations", "download_weather", "delete" or clean the data frame. 
+
+My location of interest is the Dehesa San Francisco described in chapter 8. To find possible data sets for my location I first generate a list of stations (action="list_stations") near my location that provide data for a time_interval of my choice. Here I use 30 years as time interval as it is the minimum requirement to calculate a climate normal.
+
+```{r}
+library(chillR)
+station_list<-handle_gsod(action="list_stations",
+                          location=c(-6.2333,37.8667),
+                          time_interval=c(1990,2020))
+station_list
+```
+2. Download weather data for the most promsing station on the list.
+
+In a second step I download the weather data (action="download_weather") for the most promising station on the list. The most promising station is the station nearest to my location that has data available for the time span I'm interested in. In this case it is the first station on the list: "SEVILLA" (chillR_code = 08391099999) in a distance of 58.27km. 
+
+```{r}
+weather<-handle_gsod(action="download_weather",
+                     location=station_list$chillR_code[1],
+                     time_interval=c(1990,2020))
+```
+3. Convert the data into chillR format
+
+In the next step I drop redundant data from the downloaded data by using the clean action of the handle_gsod-function, and transform it into a data set that is suitable for chillR.
+
+```{r}
+library(data.table)
+cleaned_weather<-handle_gsod(weather)
+
+# As the function produced a list containing a data.frame instead of a data.frame I have to convert it. The data.frame is at the first position of the list. Therefore I assign the first object of the list to a new object, using [[]]. 
+
+df_cleaned_weather <- cleaned_weather[[1]]  # 
+
+# as the first column "date" is not suitable for chillR I create a new table with the columns two to eight.
+
+cleaned_weather <- df_cleaned_weather[, 2:8]
+
+kable(head(cleaned_weather,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+
+```
+Now I have data in the chillR format. To be able to use the data again without having to download and process it again, I save the generated tables.
+```{r}
+write.csv(station_list,"data/station_list.csv",row.names=FALSE)
+write.csv(weather[[1]],"data/Dehesa_raw_weather.csv",row.names=FALSE)
+write.csv(cleaned_weather[[1]],"data/Dehesa_chillR_weather.csv",row.names=FALSE)
+```
+
+# chapter 11 Filling gaps in temperature records
+
+
+    1 Use chillR functions to find out how many gaps you have in this dataset (even if you have none, please still follow all further steps)
+    
+    
+Most likely the downloaded data has some gaps that e.g. can occur due to measuring or hardware errors. Therefore it is important to check if there are gaps. 
+
+
+```{r}
+library(tidyverse)
+library(naniar)
+
+# The data gaps are often not marked, instead the specific rows are just missing. The make_all_day_table() tool adds the missing records to the dataset and allows to screen for the gaps. 
+weather <- cleaned_weather %>% make_all_day_table()
+
+# After creating the missing records we select the variables we want to screen and check with vis_miss() for missing data.
+weather %>%
+  dplyr::select(Tmin, Tmax, Prec) %>%
+  naniar::vis_miss()
+
+```
+In this case 0.5% of the data is missing. This is data for about 57 days.
+
+ 2 Create a list of the 25 closest weather stations using the handle_gsod function & 3.Identify suitable weather stations for patching gaps
+
+ While short gaps can be interpolated, it is not recommended for longer gaps as it leads to bias. Instead, to fill these gaps we can use weather data from other weather stations that are near the location. Therefore we again can use the handle_gsod()-tool. First we scan the gsod database for stations and create a new list. 
+```{r}
+
+
+
+station_list <- handle_gsod(action="list_stations",
+                            location=c(-5.893,37.418),
+                            time_interval=c(1990,2020))
+
+station_list
+
+
+```
+The table above shows the other stations in the area of our location. Now I want to identify weather stations that are sutiable to fill the gaps. Therefore the station should be close to my originally used station and should also cover the time span I'm using data for. In this case the station "MORON AB" (chillR code = 08397099999) seems to be a good match. The station is only ~36.5km away from my station and covers the whole period. Therefore I chose this station to patch my data. Nevertheless, it turned out that the station couldn't fill my gap completly and that it was the same case for many other stations. Therefore I devided to download data from seven different stations. 
+
+4. Download weather data for promising stations, convert them to chillR format and compile them in a list
+
+To patch my weather data with the data of the station(s) I chose for patching I first have to download it. For downloading the data I again use the "download_weather" action of the handle_gsod function.
+```{r}
+patch_weather<-
+      handle_gsod(action = "download_weather",
+                  location = as.character(station_list$chillR_code[c(4,6,8,9,12,13,14)]),
+                  time_interval = c(1973,2019)) %>%
+  handle_gsod() # to clean the data and convert them to chillR format I run the handle_gsod() cleaning function for every element of the list produced with the download action, by calling it with the magrittr pipes.
+
+
+```
+
+
+
+
+
+
+Now I have the weather to patch my gaps. 
+
+5. Use the patch_daily_temperatures function to fill gaps
+
+This data I can now use in the patch_daily_temperatures()-tool. The tool fills the gaps in the weather record data set with data from the list with data off other weather stations.
+
+
+```{r}
+patched <- patch_daily_temperatures(weather = weather,
+                                    patch_weather = patch_weather)
+
+# after patching the weather data I can again scan for gaps with the workflow already shown.
+df_patched_weather <- patched[[1]]  # 
+
+
+
+patched_weather <- df_patched_weather[, 3:9]
+
+
+# The results show that there are still small gaps in the data.
+patched_weather %>%
+  dplyr::select(Tmin, Tmax, Prec) %>%
+  naniar::vis_miss()
+```
+
+
+
+As there are no more suitable weather stations providing data I can use, I interpolate the remaining gaps using the fix_weather()-tool.
+```{r}
+fixed_all_days <- fix_weather(patched_weather,
+                              start_year = 0,
+  end_year = 3000,
+  start_date = 1,
+  end_date = 366,
+  columns = c("Tmin", "Tmax", "Prec"),
+  end_at_present = TRUE
+)
+
+# the check shows that all gaps are closed now.
+fixed_all_days <- fixed_all_days[[1]]
+fixed_all_days %>%
+  dplyr::select(Tmin, Tmax, Prec) %>%
+  naniar::vis_miss()
+
+```
+Now I could close all my weather gaps and my data is ready for further analysis. In the end I save my data again to be able to use it later.
+
+```{r}
+write.csv(fixed_all_days, "D:/DatenVehlken/Sciebo/Uni/Geographie/Master/Nebenfach/tree_phenology/climate_data/dehesa_patched.csv")
+```
+
+# chapter 12
+
+
+1. For the location you chose for your earlier analyses, use chillR’s weather generator to produce 100 years of synthetic temperature data.
+  
+
+```{r}
+# first I load the patched weather data for my location
+
+data <- read.csv("D:/DatenVehlken/Sciebo/Uni/Geographie/Master/Nebenfach/tree_phenology/climate_data/dehesa_patched.csv")
+
+```
+
+To generate synthetic weather I use the temperature_generation(years, sim_years)-function, which calculates synthetic weather data for a given time span based on observerd weather data. Here I generate synthetic weather data for the years 2001 to 2100 based on the weather records of the years 1998 to 2009.
+
+```{r}
+Temp <- data %>%
+  temperature_generation(years = c(1998,2009),
+                         sim_years = c(2001,2100))
+```
+2. Calculate winter chill (in Chill Portions) for your synthetic weather, and illustrate your results as histograms and cumulative distributions
+
+To calculate winter chill for my synthetic weather data I need to hourly temperature data. Therefore I again use the stack_hourly_temp()-function. Nevertheless, I'm also interested in the winter chill of my observed data and therefore I want to compare them.
+To compare the observed and the synthetic data I create a new data frame containing both data sets. Therefore I create the new column "Data_source" in both data set, classify it as "observed" or "simulated" and filter the data set for the wanted variables or time spans. After that I merge the data sets and create a new column "Date" with a fixed year. This allows to plot the data easier for comparison as it is less influenced by variability in the month between the years.
+
+```{r}
+# filtering the data set with observed temperature data for years of interest
+Temperatures <- data %>% filter(Year %in% 1998:2009) %>%
+  cbind(Data_source = "observed")
+
+
+# select columns of interest from data set with synthetic temperature data
+new_data <- Temp[[1]] %>%
+  select(Year, Month, Day, Tmin, Tmax) %>%
+  cbind(Data_source = "simulated")
+
+# combine the selected data 
+
+Temperatures <- bind_rows(Temperatures, new_data)
+
+# creating column with the fixed year.
+
+Temperatures <- Temperatures %>% 
+  mutate(Date = as.Date(ISOdate(2000, Month, Day))) 
+
+kable(head(Temperatures,7)) %>%
+  kable_styling("striped", 
+                position = "left",
+                font_size = 10)
+
+```
+
+
+
+From the new data set I now calculate hourly data as well as the chilling hours with the already known work flows and save the results into a new data frame. 
+
+
+```{r}
+chill_observed <- Temperatures %>%
+  filter(Data_source == "observed") %>%
+  stack_hourly_temps(latitude = 37.8667) %>%
+  chilling(Start_JDay = 305,
+           End_JDay = 59)
+  
+chill_simulated <- Temperatures %>%
+  filter(Data_source == "simulated") %>%
+  stack_hourly_temps(latitude = 37.8667) %>%
+  chilling(Start_JDay = 305,
+           End_JDay = 59)
+  
+chill_comparison <-
+  cbind(chill_observed,
+        Data_source = "observed") %>%
+  rbind(cbind(chill_simulated,
+              Data_source = "simulated"))
+
+# to avoid bias through missing observations I filter the data for complete chill calculation periods. 
+chill_comparison_full_seasons <- 
+  chill_comparison %>%
+  filter(Perc_complete == 100)
+
+chill_comparison_full_seasons$Data_source <- factor(
+  chill_comparison_full_seasons$Data_source,
+  levels = c("simulated", "observed")
+)
+
+
+```
+
+
+Now I can plot the results for the winter chill for the synthetic weather data.
+```{r}
+ggplot(chill_comparison_full_seasons,
+       aes(x = Chill_portions)) + 
+  geom_histogram(binwidth = 1, position = "identity",
+                 aes(fill = factor(Data_source))) +
+  scale_fill_brewer(palette="Set2") +
+  theme_bw(base_size = 20) +
+  labs(fill = "Data source") +
+  xlab("Chill accumulation (Chill Portions)") +
+  ylab("Frequency")
+```
+
+The histogram shows the frequency of Chill Portions at the Dehesa San Francisco.
+
+
+```{r}
+chill_simulations <-
+  chill_comparison_full_seasons %>%
+  filter(Data_source == "simulated")
+  
+ggplot(chill_simulations,
+       aes(x = Chill_portions)) +
+  stat_ecdf(geom = "step",
+            lwd = 1.5,
+            col = "blue") +
+  ylab("Cumulative probability") +
+  xlab("Chill accumulation (in Chill Portions)") +
+  theme_bw(base_size = 20)
+```
+
+#12.3 Produce similar plots for the number of freezing hours (<0°C) in April (or October, if your site is in the Southern Hemisphere) for your location of interest.
+
+With nearly the same procedure we can also plot the number of freezing hours for a specific month. Therefore we use the tempResponse()-tool instead of the chilling()-tool. With tempResponse() you can calculate temperature metrics specified by a model. To calculate freezing hours we first define a freezing model that we than use in the tempResponse-function.
+
+```{r}
+
+# the freezing hours model we use here is a step model working similar like the one described in chapter 7.
+
+freezing_hours <- function(x) step_model(x,df)
+
+
+df <- data.frame(
+  lower= c(-1000, 0),
+  upper= c(    0, 1000),
+  weight=c(    1, 0))
+
+
+
+
+
+chill_observed_april <- Temperatures %>%
+  filter(Data_source == "observed") %>%
+  stack_hourly_temps(latitude = 37.418) %>%
+  tempResponse(Start_JDay = 91,
+           End_JDay = 120,
+           models = list(Frost = freezing_hours))
+
+chill_simulated_april <- Temperatures %>%
+  filter(Data_source == "simulated") %>%
+  stack_hourly_temps(latitude = 37.418) %>%
+  tempResponse(Start_JDay = 91,
+           End_JDay = 120,
+           models = list(Frost = freezing_hours))
+
+chill_comparison_april <-
+  cbind(chill_observed_april,
+        Data_source = "observed") %>%
+  rbind(cbind(chill_simulated_april,
+              Data_source = "simulated"))
+
+```
+
+The data I can now use to plot my freezing hours frequency as well as the freezing accumulation
+```{r}
+
+ggplot(chill_comparison_april,
+       aes(x = Frost)) + 
+  geom_histogram(binwidth = 5,
+                 aes(fill = factor(Data_source))) +
+  theme_bw(base_size = 10) +
+  labs(fill = "Data source") +
+  xlab("Frost incidence during winter (hours)") +
+  ylab("Frequency")
+```
+When plotting the histogram for the frost hours I get a weird looking plot . This is due to the fact that there are zero frost hours at the location of interest and the ggplot algorithm produces a "good" range for plotting automatically. 
+
+A comparable "problem" occurs for the freezing accumulation plot.
+
+```{r}
+chill_simulations_april <-
+  chill_comparison_april %>%
+  filter(Data_source == "simulated")
+  
+ggplot(chill_simulations_april,
+       aes(x = Frost)) +
+  stat_ecdf(geom = "step",
+            lwd = 1.5,
+            col = "blue") +
+  ylab("Cumulative probability") +
+  xlab("freezing accumulation (in freezing Portions)") +
+  theme_bw(base_size = 20)
+```
+# chapter 14 Historic temperature scenarios
+
+1. For the location you chose for previous exercises, produce historic temperature scenarios representing several years of the historic record (your choice).
+
+To produce historic temperature scenarios representing several years I will use the temperature_scenario_from_records() tool. The tool produces scenarios with monthly mean values for temperature minimum and maximum that are representative for particular years. As input it needs weather data as well as a reference year.
+
+The scenarios I create will be relative temperature scenarios. Relative scenarios represent the change between a specific year and a year that best represents the temperature data, called baseline. This represents what should have been normal at that time and allows to better identify historic trends.
+
+As input data I will use temperature records for the period 1973 to 2019. The year that represents the climate between 1973 and 2019 the best should be 1996, as it is the median year. Therefore I use this year as a baseline for my relative scenarios.  
+
+```{r}
+# first I download and prepate the weather data for 1973 to 2019 using the code produced previously.
+
+library(chillR)
+library(tidyverse)
+station_list<-handle_gsod(action="list_stations",
+                          location=c(-6.2333,37.8667),
+                          time_interval=c(1973,2019))
+
+dehesa_weather <-handle_gsod(action="download_weather",
+                     location=station_list$chillR_code[1],
+                     time_interval=c(1973,2019))%>%
+  handle_gsod()
+
+```
+
+
+```{r}
+patch_weather_dehesa <-
+      handle_gsod(action = "download_weather",
+                  location = as.character(station_list$chillR_code[c(5)]),
+                  time_interval = c(1973,2019)) %>%
+  handle_gsod()
+
+
+
+```
+```{r}
+# fill gaps for SEVILLA weather station with weather data from MORON AB.
+
+dehesa_patches <- patch_daily_temperatures(
+  weather = dehesa_weather$`SEVILLA`,
+  patch_weather = patch_weather_dehesa$`MORON AB` 
+)
+
+
+#Interpolate last 2 missing dates
+
+Dehesa <-fix_weather(dehesa_patches)
+
+Dehesa_temps <- Dehesa$weather
+write.csv(Dehesa_temps, "Dehesa_temps.csv", row.names = FALSE)
+```
+```{r,echo= FALSE}
+Dehesa_temps <- read.csv("D:/DatenVehlken/R/Projects/Chill_R/Dehesa_temps.csv")
+
+```
+
+From the downloaded data I first create a baseline scenario using the temperature_scenario_from_records() function. Furthermore I use the same tool to create temperature scenarios for our years of interest: 1989, 1991, 1996, 2001 and 2008. 
+
+```{r}
+#creating baseline scenario
+
+scenario_1996 <- temperature_scenario_from_records(weather = Dehesa_temps,
+                                                   year = 1996)
+#creating scenarios for several years
+
+all_past_scenarios <- temperature_scenario_from_records(
+  weather = Dehesa_temps,
+  year = c(1989,
+           1991,
+           1996,
+           2001,
+           2008))
+
+# adjusting the scenarios with the baseline scenario. Now the scenarios don't contain the absolute Tmin and Tmax mean values, but the relative change to the baseline scenario.
+
+adjusted_scenarios <- temperature_scenario_baseline_adjustment(
+  baseline = scenario_1996,
+  temperature_scenario = all_past_scenarios)
+
+# we can now use these relative scenarios to generate temperature scenarios with means for Tmin and Tmax that correspond to the relative scenario 
+all_past_scenario_temps <- temperature_generation(
+  weather = Dehesa_temps,
+  years = c(1973,2019),
+  sim_years = c(2001,2100),
+  temperature_scenario = adjusted_scenarios)
+
+```
+```{r, echo=FALSE}
+save_temperature_scenarios(all_past_scenario_temps, "data", "Dehesa_hist_scenarios")
+```
+
+Now I want to calculate the chill accumulation for the scenarios. Instead of using the functions I created or used before I use the tempResponse_daily_list()-tool that is provided by the chillR package, which combines all the functions. Therefore I first define a model list. As I'm maybe interested in other agroclimatic metrics later I also implement models for frost and growing degree hours.
+
+```{r}
+
+frost_model <- function(x)
+  step_model(x,
+             data.frame(
+               lower=c(-1000,0),
+               upper=c(0,1000),
+               weight=c(1,0)))
+
+models <- list(Chill_Portions = Dynamic_Model,
+               GDH = GDH,
+               Frost_H = frost_model)
+```
+Using the created list of historical scenarios as input the function computes temperature-based metrics defined by the input models.
+```{r}
+chill_hist_scenario_list <- tempResponse_daily_list(all_past_scenario_temps,
+                                                    latitude = 37.8667,
+                                                    Start_JDay = 305,
+                                                    End_JDay = 59,
+                                                    models = models)
+```
+Before plotting I remove all incomplete winters.
+```{r}
+chill_hist_scenario_list <- lapply(chill_hist_scenario_list,
+                                   function(x) x %>%
+                                     filter(Perc_complete == 100))
+
+save_temperature_scenarios(chill_hist_scenario_list, "data","Dehesa_hist_chill_305_59")
+```
+
+
+I now can plot the results using ggplot. 
+```{r}
+
+#prepare the data for better usability in ggplot and filter out incomplete records
+scenarios <- names(chill_hist_scenario_list)[1:4]
+
+all_scenarios <- chill_hist_scenario_list[[scenarios[1]]] %>%
+  mutate(scenario = as.numeric(scenarios[1]))
+
+for (sc in scenarios[2:4])
+ all_scenarios <- all_scenarios %>%
+  rbind(chill_hist_scenario_list[[sc]] %>%
+          cbind(
+            scenario=as.numeric(sc))
+        ) %>%
+  filter(Perc_complete == 100)
+
+
+# computing the actual 'observed' chill for comparison
+actual_chill <- tempResponse_daily_list(Dehesa_temps,
+                                        latitude=37.8667,
+                                        Start_JDay = 305,
+                                        End_JDay = 59,
+                                        models)[[1]] %>%
+  filter(Perc_complete == 100)
+
+
+ggplot(data = all_scenarios,
+       aes(scenario,
+           Chill_Portions,
+           fill = factor(scenario))) +
+  geom_violin() +
+  ylab("Chill accumulation (Chill Portions)") +
+  xlab("Scenario year") +
+  theme_bw(base_size = 15) +
+  ylim(c(0,90)) +
+  geom_point(data = actual_chill,
+             aes(End_year,
+                 Chill_Portions,
+                 fill = "blue"),
+             col = "blue",
+             show.legend = FALSE) +
+  scale_fill_discrete(name = "Scenario",
+                      breaks = unique(all_scenarios$scenario)) 
+```
+```{r, echo=FALSE}
+write.csv(actual_chill,"data/Dehesa_observed_chill_305_59.csv", row.names = FALSE)
+```
+
+#15 Future temperature scenarios
+
+1.Briefly describe the differences between the RCPs and the SSPs.
+
+Representative Concentration Pathways (RCPs) & Shared Socioeconomic Pathways(SSPs) are warming scenarios. 
+The classical RCP scenarios are based on future greenhouse gas concentrations that seemed to be possible when the scenarios were set up. They are labeled after the change in radiative forcing values (W/m²) that is expected between 1750 and 2100.                                                The SSPs are instead based on qualitative descriptions of socio economic pathways that the mankind can follow (Sustainability, Middle of the Road, Regional Rivalry, Inequality, Fossil-fueled Development). To each of the SSPs an estimated change in C° is assigned. 
+
+# chapter 16 Making CMIP6 scenarios
+
+1. Analyze the historic and future impact of climate change on two agroclimatic metrics of your choice, for the location you’ve chosen for your earlier analyses.
+
+The agroclimatic metrics I analyse for the Dehesa San Francisco are chill portions and growing degree hours. To account for the historic impact I will use the historic data I already prepared. For the future impact I will use future climate scenarios. These climate scenarios can be downloaded using chillR. In current research SSPs are used, therefore we are also using them now. They can be downloaded from "COPERNICUS Database". The API provides the possibility to download them directly in chillR, using the download_cmip6_ecmwfr()-tool. I provide the tool information about the scenarios I want to download, as well as the area of interest and models to be used. The models are basically different modelling approaches to model the future climate, using different algorithms and taking into account different aspects. In addition I have to specify the time interval and frequency. Furthermore I have to specify the variables I want to download. 
+
+```{r}
+# preparing model input
+
+location=c(-6.2333,37.8667)
+
+areas <- c(lat_high = 38, lon_low = -7.0, lat_low = 37, lon_high = -5.0)
+
+```
+
+```{r, eval=FALSE}
+# downloading scenarios
+
+download_cmip6_ecmwfr(
+  scenarios = c("ssp126", "ssp245", "ssp370", "ssp585"),
+  area = areas,
+  user = '3ca1a864-ccfe-4be4-b52d-bae18478db98',
+  key = '16136f09-1be6-48f0-8273-9de996df874e',
+  model = 'default',
+  frequency = 'monthly',
+  variable = c('Tmin', 'Tmax'),
+  year_start = 2015,
+  year_end = 2100)
+```
+
+Like for the historical records I also need a baseline scenarios to which the scenarios refer. It is recommended that future- and baseline data are created with the same tool. Therefore I use the download_baseline_cmip6_ecmwfr()-tool. I download the baseline data for the years 1986-2014 as it is available in the Copernicus database and is with 29 years almost a complete climate normal interval.
+
+```{r, eval=FALSE}
+
+download_baseline_cmip6_ecmwfr(
+  area = areas,
+  user = '3ca1a864-ccfe-4be4-b52d-bae18478db98',
+  key = '16136f09-1be6-48f0-8273-9de996df874e',
+  model = 'match_downloaded',
+  frequency = 'monthly',
+  variable = c('Tmin', 'Tmax'),
+  year_start = 1986,
+  year_end = 2014, 
+  month = 1:12)
+```
+
+The downloaded scenario data is gridded and therefore contains redundant information for me. Therefore I extract the data for my point of interest, using the extract_cmip6_data() function.´
+
+```{r}
+
+station <- data.frame(
+  station_name = c("Sevilla"),
+  longitude = c(-6.2333),
+  latitude = c(37.8667))
+
+extracted <- chillR::extract_cmip6_data(stations = station)
+```
+With the gen_rel_change_scenario() tool I generate change scenarios for the downloaded projections. To be usable for chillR I have to also transform them into a list, using the convert_scen_information() function.
+```{r}
+change_scenarios <- gen_rel_change_scenario(extracted)
+
+scen_list <- convert_scen_information(change_scenarios)
+```
+
+
+The baseline scenario I am using so far is based the Copernicus data set. Nevertheless, I still have the observed weather data from my location that I want to use. To take it into account I can use it to adjust the baseline of the newly downloaded data. Therefore I create a climate scenarios for the year 2000, which is also the baseline year in the generated data, and adjust it with the 1996 baseline scenario. 
+
+```{r}
+Dehesa_temps<-read_tab("Dehesa_temps.csv")
+```
+
+
+```{r, eval=FALSE}
+
+
+temps_1996 <- temperature_scenario_from_records(Dehesa_temps,
+                                                1996)
+
+temps_2000 <- temperature_scenario_from_records(Dehesa_temps,
+                                                2000)
+base <- temperature_scenario_baseline_adjustment(temps_1996,
+                                                 temps_2000)
+
+scen_list <- convert_scen_information(change_scenarios, 
+                                      give_structure = FALSE)
+
+# now I can adjust the generated projections with the adjusted year 2000 scenario of the observed weather data. 
+
+adjusted_list <- 
+  temperature_scenario_baseline_adjustment(
+    base,
+    scen_list,
+    temperature_check_args =
+      list(scenario_check_thresholds = c(-5, 15)))
+
+# The adjusted list I can now use for temperature generation
+temps <- temperature_generation(Dehesa_temps, 
+                       years = c(1973, 2019),
+                       sim_years = c(2001, 2100),
+                       adjusted_list,
+                       temperature_check_args =
+                         list(scenario_check_thresholds = c(-5, 15)))
+
+save_temperature_scenarios(temps,
+                            "future_climate",
+                            "Dehesa_futuretemps")
+```
+
+
+The generated data I can now use again to plot the changes in temperature variables, using the already known workflows.
+
+```{r}
+frost_model <- function(x)
+  step_model(x,
+             data.frame(
+               lower = c(-1000, 0),
+               upper = c(0, 1000),
+               weight = c(1, 0)))
+
+models <- list(Chill_Portions = Dynamic_Model,
+               GDH = GDH,
+               Frost_H = frost_model)
+```
+
+```{r, eval=FALSE}
+chill_future_scenario_list <- tempResponse_daily_list(temps,
+                                                    latitude = 37.8667,
+                                                    Start_JDay = 305,
+                                                    End_JDay = 59,
+                                                    models = models)
+
+chill_future_scenario_list <- lapply(chill_future_scenario_list,
+                                     function(x) x %>%
+                                       filter(Perc_complete == 100))
+
+save_temperature_scenarios(chill_future_scenario_list,
+                           "future_climate",
+                           "Dehesa_futurechill_305_59")
+```
+
+```{r}
+chill_hist_scenario_list<-load_temperature_scenarios("data",
+                                                     "Dehesa_hist_chill_305_59")
+chill_future_scenario_list <- load_temperature_scenarios("future_climate",
+                           "Dehesa_futurechill_305_59")
+observed_chill <- read_tab("data/Dehesa_observed_chill_305_59.csv")
+
+
+chills <- make_climate_scenario(
+  chill_hist_scenario_list,
+  caption = "Historical",
+  historic_data = observed_chill,
+  time_series = TRUE)
+
+plot_climate_scenarios(
+  climate_scenario_list = chills,
+  metric = "Chill_Portions",
+  metric_label = "Chill (Chill Portions)")
+```
+To plot the data for all future climate scenarios I add each to the chill object. In a first step I identify the data for the SSP and Time combinations
+```{r}
+SSPs <- c("ssp126", "ssp245", "ssp370", "ssp585")
+Times <- c(2050, 2085)
+
+list_ssp <- 
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(2) %>%
+  unlist()
+
+list_gcm <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(3) %>%
+  unlist()
+
+list_time <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(4) %>%
+  unlist()
+#
+
+for(SSP in SSPs)
+  for(Time in Times)
+    {
+    
+    # find all scenarios for the ssp and time
+    chill <- chill_future_scenario_list[list_ssp == SSP & list_time == Time]
+    names(chill) <- list_gcm[list_ssp == SSP & list_time == Time]
+    if(SSP == "ssp126") SSPcaption <- "SSP1"
+    if(SSP == "ssp245") SSPcaption <- "SSP2"
+    if(SSP == "ssp370") SSPcaption <- "SSP3"
+    if(SSP == "ssp585") SSPcaption <- "SSP5"    
+    if(Time == "2050") Time_caption <- "2050"
+    if(Time == "2085") Time_caption <- "2085"
+    chills <- chill %>% 
+      make_climate_scenario(
+        caption = c(SSPcaption,
+                    Time_caption),
+        add_to = chills)
+}
+```
+The following plot shows the chill portions for the Dehesa San Francisco for different climate models for all five SSP scenarios for the year 2050 and 2085. In all years for all scenarios and models we can see lower expected chill as for the historical observations. As expected, we see the lowest reduction in chill for the SSP1 models, showing relatively similar distribution for 2050 and 2085. For the SSP2, SSP3 and SSP5 models in 2050 we see relatively low differences in the chill. For 2085 we can see a rapid decline in chill, indicating that some tipping points may be reached.
+```{r}
+info_chill <-
+  plot_climate_scenarios(
+    climate_scenario_list = chills,
+    metric = "Chill_Portions",
+    metric_label = "Chill (Chill Portions)",
+    texcex = 1.5)
+```
+
+In the plot for the growing hours, an opposit trend can be seen. Compared to the historic records, for all scenarios and models an increase in growing degree hours can be seen. Again, the SSP1 models show the lowest change with relatively similar hours for 2050 and 2085. For the SSP2, SSP3 and SSP5 models for 2050 again relatively similar GDH can be seen, with a slightly upwards trends from SSP2 to SSP5. For the year 2085 an high increase in GDH can be seen among the models.
+
+```{r}
+info_heat <-
+  plot_climate_scenarios(
+    climate_scenario_list = chills,
+    metric = "GDH",
+    metric_label = "Heat (Growing Degree Hours)",
+    texcex = 1.5)
+```
+
+
+# Chapter 18 
+
+Produce similar plots for the weather station you selected for earlier exercises.
+
+As you may have noticed the analysed plots produced with the inbuilt chillR functions are not very clear. To produce clearer plots we can use ggplot, which has already a build in function in chillR.
+For the plots I will use the scenario data that I produced recently.
+
+```{r}
+library(kableExtra)
+library(chillR)
+library(tidyverse)
+library(ggpmisc)
+library(patchwork)
+```
+
+```{r}
+# import the chill scenario data and partly store it as lists with the load_temperature_scenarios(). The lists can be used as input now. 
+
+chill_hist_scenario_list <- load_temperature_scenarios("data",
+                                                       "Dehesa_hist_chill_305_59")
+actual_chill <- read_tab("data/Dehesa_observed_chill_305_59.csv")
+
+chill_future_scenario_list <- load_temperature_scenarios("future_climate","Dehesa_futurechill_305_59")
+
+# using the make_climate_scenario() function to create climate scenarios for plotting. The function uses climate metric data that is stored in lists. I use the list I just generated.
+
+chills <- make_climate_scenario(
+  chill_hist_scenario_list,
+  caption = "Historic",
+  historic_data = actual_chill,
+  time_series = TRUE)
+
+# filtering the data for the scenarios
+SSPs <- c("ssp126", "ssp245", "ssp370", "ssp585")
+Times <- c(2050, 2085)
+
+list_ssp <- 
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(2) %>%
+  unlist()
+
+list_gcm <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(3) %>%
+  unlist()
+
+list_time <-
+  strsplit(names(chill_future_scenario_list), '\\.') %>%
+  map(4) %>%
+  unlist()
+
+
+for(SSP in SSPs)
+  for(Time in Times)
+    {
+    
+    # find all scenarios for the ssp and time
+    chill <- chill_future_scenario_list[list_ssp == SSP & list_time == Time]
+    names(chill) <- list_gcm[list_ssp == SSP & list_time == Time]
+    if(SSP == "ssp126") SSPcaption <- "SSP1"
+    if(SSP == "ssp245") SSPcaption <- "SSP2"
+    if(SSP == "ssp370") SSPcaption <- "SSP3"
+    if(SSP == "ssp585") SSPcaption <- "SSP5"    
+    if(Time == "2050") Time_caption <- "2050"
+    if(Time == "2085") Time_caption <- "2085"
+    chills <- chill %>% 
+      make_climate_scenario(
+        caption = c(SSPcaption,
+                    Time_caption),
+        add_to = chills)
+}
+```
+
+For ggplot using the data.frame format is recommended. Therefore I loop through our chill projection list and extract the data. First I do it for the historic data.
+```{r}
+
+
+for(nam in names(chills[[1]]$data))
+  {
+   # Extract the data frame.
+   ch <- chills[[1]]$data[[nam]]
+   # Add columns for the new information we have to add and fill them.
+   ch[,"GCM"] <- "none"
+   ch[,"SSP"] <- "none"
+   ch[,"Year"] <- as.numeric(nam)
+   
+   # Now check if this is the first time we've gone through this loop.
+   # If this is the first time, the ch data.frame becomes the output
+   # object (past_simulated).
+   # If it is not the first time ('else'), we add the current data.frame
+   # to the 'past_simulated' object
+  if(nam == names(chills[[1]]$data)[1])
+    past_simulated <- ch else
+      past_simulated <- rbind(past_simulated,
+                              ch)
+  }
+
+# Add another column called 'Scenario' and label all rows as 'Historical' 
+past_simulated["Scenario"] <- "Historical"
+
+kable(head(past_simulated))  %>%
+  kable_styling("striped", position = "left",font_size = 8)
+```
+To add the historic observations to my data I create a pointer.
+```{r}
+past_observed <- chills[[1]][["historic_data"]]
+```
+In the next step I loop through the future data and add it to the list.
+```{r}
+# Extract future data
+for(i in 2:length(chills))
+  for(nam in names(chills[[i]]$data))
+    {ch <- chills[[i]]$data[[nam]]
+     ch[,"GCM"] <- nam
+     ch[,"SSP"] <- chills[[i]]$caption[1]
+     ch[,"Year"] <- chills[[i]]$caption[2]
+     if(i == 2 & nam == names(chills[[i]]$data)[1])
+       future_data <- ch else
+         future_data <- rbind(future_data,ch)
+  }
+```
+Now I can plot the data. Therefore I combine multiple plots using the plot_layout()-function, that is contained in the patchwork package. To prevent axis scales due to variation in the data I set the scales using the range() function.
+
+```{r}
+metric <- "GDH"
+axis_label <- "Heat (in GDH)"
+
+# get extreme values for the axis scale
+
+rng <- range(past_observed[[metric]],
+             past_simulated[[metric]],
+             future_data[[metric]]) 
+```
+Now I first produce a plot for the historic data. Therefore I generate box plots of the simulated historic data and combine them with a scatter plot of the observed historic data.
+
+```{r}
+past_plot <- ggplot() +
+  geom_boxplot(data = past_simulated,
+               aes_string("as.numeric(Year)", metric, group = "Year"),
+               fill = "skyblue",
+               width = 0.9) +  # Increased boxplot width
+  scale_y_continuous(limits = c(0, round(rng[2] + rng[2]/10))) +
+  labs(x = "Year", y = axis_label) +
+  facet_grid(~ Scenario) +
+  theme_bw(base_size = 15) +
+  geom_point(data = past_observed,
+             aes_string("End_year", metric),
+             col = "blue") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+past_plot
+```
+
+Next I produce the future scenarios for the years 2050 and 2085 and combine them.
+
+```{r}
+future_plot_list <- list()
+
+time_points <- c(2050, 2085)
+
+for(y in time_points)
+{
+  future_plot_list[[which(y == time_points)]] <-
+    ggplot(data = future_data[which(future_data$Year==y),]) +
+    geom_boxplot(aes_string("GCM",
+                            metric,
+                            fill="GCM")) +
+    facet_wrap(vars(SSP), nrow = 1) +
+    scale_x_discrete(labels = NULL,
+                     expand = expansion(add = 1)) +
+    scale_y_continuous(limits = c(0, 
+                                  round(round(1.1*rng[2])))) +
+    geom_text_npc(aes(npcx = "center",
+                      npcy = "top", 
+                      label = Year),
+                  size = 5) +
+    theme_bw(base_size = 15) +
+    theme(axis.ticks.y = element_blank(),
+          axis.text = element_blank(),
+          axis.title = element_blank(),
+          legend.position = "bottom",
+          legend.margin = margin(0, 
+                                 0, 
+                                 0, 
+                                 0, 
+                                 "cm"),
+          legend.background = element_rect(),
+          strip.background = element_blank(),
+          strip.text = element_text(face = "bold"),
+          legend.box.spacing = unit(0, "cm"),
+          plot.subtitle = element_text(
+            hjust = 0.5,
+            vjust = -1,
+            size = 15 * 1.05,
+            face = "bold")) 
+}
+
+future_plot_list
+```
+In the end I combine all produced plots.
+```{r}
+both_plots <- past_plot + future_plot_list
+
+plot <- both_plots +
+           plot_layout(guides = "collect",
+                       widths = c(1,rep(2,length(future_plot_list))))
+
+plot <- plot & theme(legend.position = "bottom",
+                     legend.text = element_text(size=8),
+                     legend.title = element_text(size=10),
+                     axis.title.x = element_blank())
+
+plot
+```
+
+I also have to produce plots for Chill Portions and Frost duration. For faster plotting of these and in the future I wrap up the code produced previously into a function
+
+```{r}
+plot_scenarios_gg <- function(past_observed,
+                              past_simulated,
+                              future_data,
+                              metric,
+                              axis_label,
+                              time_points)
+{
+  rng <- range(past_observed[[metric]],
+               past_simulated[[metric]],
+               future_data[[metric]])  
+  past_plot <- ggplot() +
+    geom_boxplot(data = past_simulated,
+                 aes_string("as.numeric(Year)",
+                            metric,
+                            group="Year"),
+                 fill="skyblue") +
+    scale_y_continuous(limits = c(0, 
+                                  round(round(1.1*rng[2])))) +
+    labs(x = "Year", y = axis_label) +
+    facet_grid(~ Scenario) +
+    theme_bw(base_size = 15) +  
+    theme(strip.background = element_blank(),
+          strip.text = element_text(face = "bold"),
+          axis.text.x = element_text(angle=45, 
+                                     hjust=1)) +
+    geom_point(data = past_observed,
+               aes_string("End_year",
+                          metric),
+               col="blue")
+  
+  future_plot_list <- list()
+  
+  for(y in time_points)
+  {
+    future_plot_list[[which(y == time_points)]] <-
+      ggplot(data = future_data[which(future_data$Year==y),]) +
+      geom_boxplot(aes_string("GCM", 
+                              metric, 
+                              fill="GCM")) +
+      facet_wrap(vars(SSP), nrow = 1) +
+      scale_x_discrete(labels = NULL,
+                       expand = expansion(add = 1)) +
+      scale_y_continuous(limits = c(0, 
+                                    round(round(1.1*rng[2])))) +
+      geom_text_npc(aes(npcx = "center",
+                        npcy = "top",
+                        label = Year),
+                    size = 5) +
+      theme_bw(base_size = 15) +
+      theme(axis.ticks.y = element_blank(),
+            axis.text = element_blank(),
+            axis.title = element_blank(),
+            legend.position = "bottom",
+            legend.margin = margin(0,
+                                   0, 
+                                   0, 
+                                   0, 
+                                   "cm"),
+            legend.background = element_rect(),
+            strip.background = element_blank(),
+            strip.text = element_text(face = "bold"),
+            legend.box.spacing = unit(0, "cm"),
+            plot.subtitle = element_text(hjust = 0.5,
+                                         vjust = -1,
+                                         size = 15 * 1.05,
+                                         face = "bold")) 
+  }
+  
+  plot <- (past_plot +
+             future_plot_list +
+             plot_layout(guides = "collect",
+                         widths = c(1,rep(2,length(future_plot_list))))
+           ) & theme(legend.position = "bottom",
+                     legend.text = element_text(size = 8),
+                     legend.title = element_text(size = 10),
+                     axis.title.x=element_blank())
+  plot
+  
+}
+```
+
+```{r}
+plot_scenarios_gg(past_observed = past_observed,
+                  past_simulated = past_simulated,
+                  future_data = future_data,
+                  metric = "Chill_Portions",
+                  axis_label = "Chill (in Chill Portions)",
+                  time_points = c(2050, 2085))
+```
+
+```{r}
+plot_scenarios_gg(past_observed = past_observed,
+                  past_simulated = past_simulated,
+                  future_data = future_data,
+                  metric = "Frost_H",
+                  axis_label = "Frost duration (in hours)",
+                  time_points = c(2050, 2085))
+```
+
+# Chapter 19 Chill model comparison
+
+# Chapter 20 Simple phenology analysis
+
+1. Provide a brief narrative describing what p-hacking is, and why this is a problematic approach to data analysis.
+
+P-hacking is when researchers try to find the lowest p-values in their data sets, suggesting higher correlations, regardless if there really is a causal correlation between the variables. This leads to biased publications.
+
+2. Provide a sketch of your causal understanding of the relationship between temperature and bloom dates.
+
+Blooming is dependent on two temperature related processes: chilling and forcing. To survive winter, trees establish a dormant phase, called winter dormancy. Winter dormancy can be divided into the three phases: dormancy induction, endo dormancy and eco dormancy. During the induction phase the callose deposition in the plasmodesma leads to a stop in communication in the shoots, which causes the dormant state. To overcome this dormant state (endo dormancy) the trees have to be exposed to a certain amount of chilling as the temperatures lead to a degradation of the callose, unplugging the communication pathways and enables the meristems to grow. Now forcing temperatures are needed to lead to bloom, as the buds need exposure to heat to get into new phenological stages.
+
+3. What do we need to know to build a process-based model from this?
+
+The knowledge about what happens during dormancy. So after how much chilling the cummunication pathways are unplugged and how much forcing is needed for bloom. These requirements are specific to different cultivars.
+
+# Chapter 21 Delineating temperature respnse phases with PLS regression.
+
+1. Briefly explain why you shouldn’t take the results of a PLS regression analysis between temperature and phenology at face value. What do you need in addition in order to make sense of such outputs?
+
+PLS is a datamining technique that was developed to search for patterns in hugh data sets. The used dataset is small and even if the results show correlations, they don’t imply causality. To make sense of the output you need a bagged theory that supports the results.
+
+2. Replicate the PLS analysis for the Roter Boskoop dataset that you used in a previous lesson.
+
+The PLS analysis in chapter 21 determined the response of blooming dates of "Alexander Lucas" pears to temperature. The same I will do for "Roter Boskoop" apples now. To delineate temperature response phases with PLS regression you can use the PLS_pheno()- tool in chillR. 
+
+```{r}
+library(chillR)
+# first I convert the first bloom dates to Julian dates
+
+Roter_Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+```
+I also import the weather data and assign Julian dates.
+```{r}
+Dehesa_temps <- read_tab("data/TMaxTMin1958-2019_patched.csv") %>%
+  make_JDay
+```
+In the next step I conduct the PLS regression using the PLS_pheno()-function.
+```{r}
+PLS_results <- PLS_pheno(Dehesa_temps,
+                         Roter_Boskop)
+
+
+```
+The function produces a list containing two data frames. The results are contained in the PLS_summary data.frame, which we can now plot using the plot_PLS()-function. 
+
+```{r, eval=FALSE}
+plot_PLS(PLS_results, "data/pls_roter_boskoop")
+```
+```{r,echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/pls_roter_boskoop.png")
+```
+The plot shows the VIP values, marking important days blue, the model coefficient, marking important days red (when negative) or green (when positive), as well as the mean temperature (same sheme as model coefficients.)
+
+3. Write down your thoughts on why we’re not seeing the temperature response pattern we may have expected. What happened to the chill response? 
+
+Maybe chilling does not always response the same to temperature. If it is to cold there may be no chilling and therefore the model could get confused. E.g. higher temperature lead to forcing, which is shown by the plots. But when it is to cold for chilling lower temperature don't lead to chilling. In that case warmer periods would lead to chilling again. Due to that we would have two responses to temperature for chilling, confusing the PLS regression.
+
+# Chapter 22 Success and limitations of PLS regression analysis
+
+1. Briefly explain in what climatic settings we can expect PLS regression to detect the chilling phase - and in what settings this probably won’t work. 
+
+We can expect PLS regression to detect the chilling phase in climatic settings with monotonic relationships, meaning lower temperatures are related to chilling and higher temperatures to forcing. When this monotonic relationship isn’t given in a region it won’t work. This is e.g. for regions where the temperatures are often lower than the effective chilling range specified by the used model. Then an temperature increase or higher temperatures would lead to an increase in chilling instead of reducing it. 
+
+2. How could we overcome this problem?
+
+To overcome this problem we could use other variables that have a monotonic relationship with chilling.
+
+# Chapter 23 PLS regression with agroclimatic metrics
+
+1. Repeat the PLS_chill_force procedure for the ‘Roter Boskoop’ dataset. Include plots of daily chill and heat accumulation.
+
+As stated temperature and chill effictiveness are not always monotonic related. To overcome the problem you can convert the temperature data to daily chill accumulation rates. This I will do for the Roter Boskoop at Klein Altendorf. 
+
+```{r}
+library(chillR)
+
+# first I load our daily temperature data and convert it to hourly data  
+
+temps_hourly <- read_tab("data/TMaxTMin1958-2019_patched.csv") %>%
+  stack_hourly_temps(latitude = 50.6)
+```
+Now I use the daily_chill()-function to calculate daily chill and heat accumulation. The function calculates these agroclimatic metrics based on hourly temperature data for a given set of chill models.
+```{r}
+daychill <- daily_chill(hourtemps = temps_hourly,
+                        running_mean = 11,
+                        models = list(
+                          Chilling_Hours = Chilling_Hours,
+                          Utah_Chill_Units = Utah_Model,
+                          Chill_Portions = Dynamic_Model,
+                          GDH = GDH)
+                        )
+```
+
+Now I can use the the PLS_chill_force() function to conduct a PLS regression analysis that relates the daily rates of chill and heat accumulation to biological phenomena that occure yearly. Here for the blooming dates of Roter Boskoop between 1958 and 2019. As Chill Portions accumulate step wise instead of continuously and these steps are not reached daily, I implement a running mean of 11 days  to avoid randomness in the estimation of the rates. 
+
+```{r}
+# load and prepare data for the chill force function
+
+Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, 
+         JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+
+# applying the chill force function
+
+plscf <- PLS_chill_force(daily_chill_obj = daychill,
+                         bio_data_frame=Boskop,
+                         split_month = 6,
+                         chill_models = "Chill_Portions",
+                         heat_models = "GDH",
+                         runn_means = 11)
+```
+
+The results I can plot using the plot_PLS()-function which requires a list produced by the PLS_chill_force()-function as input. The function produces plots with VIP scores, model coefficients and daily accumulation rates of chill and heat metrics, here the Chill Portions as I use the Dynamic Model. The results I can use to delineate chilling and forcing periods.
+```{r}
+
+plot_PLS(plscf,
+         PLS_results_path = "data/plscf_outputs_11days")
+```
+
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plscf_outputs_11days_Chill_Portions_GDH.png")
+```
+
+2. Run PLS_chill_force analyses for all three major chill models. Delineate your best estimates of chilling and forcing phases for all of them.
+
+The three major chill models are the Chilling Hours model, the Utah model and the Dynamic Model.
+I already calculated their chill metrics and can therefore just add them to my chill models list in the chill force function. As I already run the analysis for the Dynamic Model I skip it now. Neverteheless, the chilling phase I delineate from the Dynamic Model results for Roter Boskoop at CKA is from -26 to 67, while I would delineate the forcing phase from the 10 to 126.
+```{r}
+
+plscf <- PLS_chill_force(daily_chill_obj = daychill,
+                         bio_data_frame = Boskop,
+                         split_month = 6,
+                         chill_models = c("Chilling_Hours",
+                                          "Utah_Chill_Units",
+                                          "Chill_Portions"),
+                       heat_models = c("GDH"))
+
+```
+
+To delineate the chilling and forcing phases for the other models I again use the plot_PLS() function
+The PLS_chill_force()-function created a list with tables for every chill and heat model combination. I now call the tables needed for plotting the different chill models and specify their axis label by the metric they compute. 
+
+```{r}
+# plotting the Chilling Hours results
+
+plot_PLS(plscf[c(1,2,3)],
+         PLS_results_path = "data/plfscf",
+         axis_labels_chill_force = c("CH per day", "GDH per day"))
+
+
+```
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plfscf_Chilling_Hours_GDH.png")
+```
+For the Chilling Hours model I delineate the chilling phase to the Julian days -22 to 65 , while the forcing phase is from days 8 to 123. 
+
+```{r}
+# plotting the Utah model results
+
+plot_PLS(plscf[c(1,2,4)],
+         PLS_results_path = "data/plfscf",
+         axis_labels_chill_force = c("CU per day", "GDH per day"))
+
+
+```
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plfscf_Utah_Chill_Units_GDH.png")
+```
+
+
+For the Utah model I delineate the chilling phase to the Julian days -25 to 84 , while the forcing phase is from days 10 to 122.
+
+3. Plot results for all three analyses, including shaded plot areas for the chilling and forcing periods you estimated.
+
+Now I can plot the results with highlighted chilling and forcing phases.
+
+```{r}
+
+# Dynamic Model
+
+plot_PLS(plscf[c(1,2,5)],
+         PLS_results_path = "data/plscf_high",
+         add_chill = c(-26,67),
+         add_heat = c(10,126))
+```
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plscf_high_Chill_Portions_GDH.png")
+```
+
+```{r}
+#Chilling hours
+
+plot_PLS(plscf[c(1,2,3)],
+         PLS_results_path = "data/plfscf_high",
+         axis_labels_chill_force = c("CH per day", "GDH per day"),
+         add_chill = c(-22,65),
+         add_heat = c(8,123))
+```
+
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plfscf_high_Chilling_Hours_GDH.png")
+```
+
+```{r}
+#Utah model
+
+plot_PLS(plscf[c(1,2,4)],
+         PLS_results_path = "data/plfscf_high",
+         axis_labels_chill_force = c("CU per day", "GDH per day"),
+         add_chill = c(-25,84),
+         add_heat = c(10,122))
+
+
+```
+```{r, echo=FALSE}
+knitr::include_graphics("D:/DatenVehlken/R/Projects/Chill_R/data/plfscf_high_Utah_Chill_Units_GDH.png")
+```
+
+# Chapter 24 Examples of PLS regression with
+
+1. Look across all the PLS results presented above. Can you detect a pattern in where chilling and forcing periods could be delineated clearly, and where this attempt failed?
+
+chilling and forcing periods could be clearly be determined in warmer regions with variable chill accumulation rates. In contrast, in the colder region without these variability it was hard to delineate clearly.
+
+2. Think about possible reasons for the success or failure of PLS analysis based on agroclimatic metrics. Write down your thoughts.
+
+As it was only possible to delineate chilling periods in region with variablity in the chill accumulation, this is probably a factor for success or failure. The PLS looks for response to certain variables. If there is no variability in the data there might be just a low response that can be recognized by the PLS analysis.
+
+# Chapter 25 Why PLS doesn't always work
+
+```{r}
+library(chillR)
+library(tidyverse)
+library(ggplot2)
+library(colorRamps)
+```
+
+1. Produce chill and heat model sensitivity plots for the location you focused on in previous exercises.
+
+As suggested in the previous chapter variation in chill accumulation could influence the performance of PLS regression analysis. To check this I will create chill and heat model sensitivity plots that show the response of the (Dynamic) model to temperature at the Dehesa San Francisco. For the plots I need a data table with daily minimum and maximum temperatures and the corresponding chill portion value. To compute these I can use the functions created or used in previous chapters. To make the reproduction of this easier I will create a function called Chill_model_sensitivity(). It needs the latitude of the location, the models to be analyzed, the month of interest as well as a range for minimum and maximum temperatures as input.
+
+```{r}
+Chill_model_sensitivity<-
+  function(latitude,
+           temp_models = list(Dynamic_Model = Dynamic_Model,
+                              GDH = GDH),
+           month_range = c(10, 11, 12, 1, 2, 3),
+           Tmins = c(-10:20),
+           Tmaxs = c(-5:30))
+  {
+    # create variables where the results of our analysis will be stored in.
+  mins <- NA
+  maxs <- NA
+  metrics <- as.list(rep(NA,
+                         length(temp_models)))
+  names(metrics) <- names(temp_models)
+  month <- NA
+ # create a data table for our analysis. First I loop through all month specified and calculate the number of days for them.
+  for(mon in month_range)
+    {
+    days_month <-
+      as.numeric(difftime(ISOdate(2002,
+                                  mon + 1,
+                                  1),
+                          ISOdate(2002,
+                                  mon,
+                                  1) ))
+    if(mon == 12) days_month <- 31
+    
+    # in the next step I create all day weather tables for them.
+    
+    weather <- 
+      make_all_day_table(data.frame(Year = c(2001, 2001),
+                                    Month = c(mon, mon),
+                                    Day = c(1, days_month),
+                                    Tmin = c(0, 0),
+                                    Tmax = c(0, 0)))
+
+    # loop through all combinations of tmin and tmax where tmax >= tmin and create hourly temperature data.
+    for(tmin in Tmins)
+      for(tmax in Tmaxs)
+        if(tmax >= tmin)
+          {
+          hourtemps <- weather %>%
+            mutate(Tmin = tmin,
+                   Tmax = tmax) %>%
+            stack_hourly_temps(
+              latitude = latitude) %>%
+            pluck("hourtemps",
+                  "Temp")
+          # based on the hourly temperatures generated calculate the model metrics and normalize them by the number of days in that month
+          for(tm in 1:length(temp_models))
+            metrics[[tm]] <- 
+              c(metrics[[tm]],
+                tail(do.call(temp_models[[tm]],
+                        list(hourtemps)),1)/
+                              days_month)
+          
+          mins <- c(mins, tmin)
+          maxs <- c(maxs, tmax)
+          month <- c(month, mon)
+        }
+  }
+  
+  # save the results in a data frame
+  results <- cbind(data.frame(Month = month,
+                              Tmin = mins,
+                              Tmax = maxs),
+                   as.data.frame(metrics))
+  
+  results <- results[!is.na(results$Month),]
+}
+
+
+
+```
+The created function I now apply to the latitude of the Dehesa San Francisco.
+```{r}
+Model_sensitivities_Dehesa <-
+  Chill_model_sensitivity(latitude = 37.881017,
+                          temp_models = list(Dynamic_Model = Dynamic_Model,
+                                             GDH = GDH),
+                          month_range = c(10:12, 1:5))
+```
+```{r}
+write.csv(Model_sensitivities_Dehesa,
+          "data/Model_sensitivities_Dehesa.csv",
+          row.names = FALSE)
+```
+
+
+
+The data frame produced with this function creates a table with columns for Month, Tmin, Tmax and the model metrics.
+As stated I want to produce plots showing the response of the (Dynamic) model to temperature at the Dehesa San Francisco.
+These results I can use for plotting. For that I also generate a function and call it Chill_sensitivity_temps(). The function uses data produced by the sensitivity function, as well as observed temperature data as input. 
+
+```{r}
+Chill_sensitivity_temps <-
+  function(chill_model_sensitivity_table,
+           temperatures,
+           temp_model,
+           month_range = c(10, 11, 12, 1, 2, 3),
+           Tmins = c(-10:20),
+           Tmaxs = c(-5:30),
+           legend_label = "Chill/day (CP)")
+{
+# filter the sensitivity results for the month range we specified and create a new column with their names as factors.
+  cmst <- chill_model_sensitivity_table
+  cmst <- cmst[which(cmst$Month %in% month_range),]
+  cmst$Month_names <- factor(cmst$Month,
+                             levels = month_range,
+                             labels = month.name[month_range])  
+  
+  # plot the Tmin vs Tmax values and use the value for the temperature model as fill. 
+  DM_sensitivity<-
+    ggplot(cmst,
+           aes_string(x = "Tmin",
+                      y = "Tmax",
+                      fill = temp_model)) +
+    geom_tile() +
+    scale_fill_gradientn(colours = alpha(matlab.like(15),
+                                         alpha = .5),
+                         name = legend_label) +
+    xlim(Tmins[1],
+         Tmins[length(Tmins)]) +
+    ylim(Tmaxs[1],
+         Tmaxs[length(Tmaxs)])
+  
+  
+  temperatures<-
+    temperatures[which(temperatures$Month %in% month_range),]
+  
+  temperatures[which(temperatures$Tmax < temperatures$Tmin),
+               c("Tmax", 
+                 "Tmin")] <- NA
+  
+  temperatures$Month_names <-
+    factor(temperatures$Month,
+           levels = month_range,
+           labels = month.name[month_range])  
+  
+  DM_sensitivity +
+    geom_point(data = temperatures,
+               aes(x = Tmin,
+                   y = Tmax,
+                   fill = NULL,
+                   color = "Temperature"),
+               size = 0.2) +
+    facet_wrap(vars(Month_names)) +
+    scale_color_manual(values = "black",
+                       labels = "Daily temperature \nextremes (°C)",
+                       name = "Observed at site" ) +
+    guides(fill = guide_colorbar(order = 1),
+           color = guide_legend(order = 2)) +
+    ylab("Tmax (°C)") +
+    xlab("Tmin (°C)") + 
+    theme_bw(base_size = 15)
+
+}
+```
+This function I now use to first plot the chill sensivity.
+
+```{r}
+Dehesa_weather <- read_tab("Dehesa_temps.csv")
+
+Chill_sensitivity_temps(Model_sensitivities_Dehesa,
+                        Dehesa_weather,
+                        temp_model = "Dynamic_Model",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        legend_label = "Chill per day \n(Chill Portions)") +
+  ggtitle("Chill model sensitivity near Santa Olalla de Calla, Spain")
+```
+
+
+Here you can see the chill per day as chill portions for october till march at the latitude of the Dehesa San Francisco. Blue colors indicate low chill portions while brown indicate higher chill portions (up to 1).
+
+To plot the heat model sensitivity I just use the GDH model as input for my Chill_sensitivity_temps()-function.
+
+```{r}
+Chill_sensitivity_temps(Model_sensitivities_Dehesa,
+                        Dehesa_weather,
+                        temp_model = "GDH",
+                        month_range = c(12, 1:5),
+                        legend_label = "Heat per day \n(GDH)") +
+  ggtitle("Heat model sensitivity near Santa Olalla de Calla, Spain")
+```
+
+
+# Chapter 26 Evaluating PLS outputs
+
+1. Reproduce the analysis for the ‘Roter Boskoop’ dataset.
+
+In chapter 26 the chilling and forcing requirements of the "Alexander Lucas" pear at Campus Klein Altendorf were analysed. As approxis for the agroclimatic needs of the trees the mean amounts of chill and heat that were accumulated during the chilling and forcing phases were used. For evaluating of the error the standard deviations were used. In addition the response of the cultivar to seasonal temperature was analysed by producing temperature response plots.
+
+To calculate the chill and heat accumulated during the chilling and forcing phases for "Roter Boskoop" apples at Campus Klein Altendorf I use the tempResponse()-function again. As input for the chill and heat phases I will use the days I delineated in chapter 23.
+
+```{r}
+# load and transform the required data.
+temps <- read_tab("data/TMaxTMin1958-2019_patched.csv")
+temps_hourly <- temps %>%
+  stack_hourly_temps(latitude = 50.6)
+
+Boskop <- read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, 
+         JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+```
+
+
+
+```{r}
+# specify the delineated chill & heat phases
+
+chill_phase <- c(339, 67)
+heat_phase <- c(10, 126)
+
+# calculate chill accumulation.
+
+chill <- tempResponse(hourtemps = temps_hourly,
+                      Start_JDay = chill_phase[1],
+                      End_JDay = chill_phase[2],
+                      models = list(Chill_Portions = Dynamic_Model),
+                      misstolerance = 10)
+
+# calculate heat accumulation
+
+heat <- tempResponse(hourtemps = temps_hourly,
+                     Start_JDay = heat_phase[1],
+                     End_JDay = heat_phase[2],
+                     models = list(GDH = GDH))
+```
+
+
+Now I can estimate the chill & heat requirements by calculate the mean accumulations and evaluate the error by computing the standard deviations.
+
+```{r}
+chill_requirement <- mean(chill$Chill_Portions)
+chill_req_error <- sd(chill$Chill_Portions)
+
+heat_requirement <- mean(heat$GDH)
+heat_req_error <- sd(heat$GDH)
+```
+```{r, eval=FALSE}
+chill_requirement
+chill_req_error
+
+heat_requirement
+heat_req_error
+```
+The chillilling requirement is about 60.3 Chill Portions. The error estimated is 7.3 CP.
+
+The forcing reqirement are ~6243 GDH, while the error is at ~1806 GDH.
+
+To analyse the impacts of chilling and forcing temperatures on the phenology of Roter Boskop I create temperature response plots using the make_pheno_trend_plot()-function that is contained in chillR. The tool creates plots that show the phenology response  to temperatures during two phases plots (ebd. chillR) 
+
+```{r}
+chill_phase <- c(-26, 67)
+heat_phase <- c(10, 126)
+
+
+mpt <- make_pheno_trend_plot(weather_data_frame = temps,
+                             pheno = Boskop,
+                             Start_JDay_chill = chill_phase[1], 
+                             End_JDay_chill = chill_phase[2],
+                             Start_JDay_heat = heat_phase[1],
+                             End_JDay_heat = heat_phase[2],
+                             outpath = "data/",
+                             file_name = "pheno_trend_plot",
+                             plot_title =  "Impacts of chilling and forcing temperatures on Roter Boskoop phenology",
+                             image_type = "png", 
+                             colorscheme = "normal")
+```
+Looking at the plot we can see a linear correlation between blooming dates and temperatures during chill and force periods. The latest bloom can be seen for low mean temperatures for chilling and forcing phase, while the earliest bloom can be seen for high mean temperatures for both. 
+
+2. We’ve looked at data from a number of locations so far. How would you expect this surface plot to look like in Beijing? And how should it look in Tunisia?
+
+For Beijing I would expect a relatively similar pattern to CKA, as the temperatures are similar. In Tunisia earlier bloom dates should occur with lower temperatures during the chilling phase, as the temperatures in Tunisia are in general relatively high. 
+
+
+# Chapter 27 The relative importance of chill and heat
+
+1. Describe the temperature response hypothesis outlined in this chapter.
+
+The hypothesis is, that in cold regions where chill accumulation is always given the timing of the spring phase is mainly influenced by temperature variations during eco dormancy. In contrast, in high temperature areas where there are optimal conditions for forcing, the timing of the spring phase is driven by temperature variations in the endo dormancy phase. 
+
+# Chapter 29 Making valid tree phenology models
+
+1. Explain the difference between output validation and process validation.
+
+In modelling output validation is refers to the procedure to check if a model is able to predict observations. For that different statistics like the Root Mean Square Error are used. Nevertheless, this gives no information about the reasonability of the model.Process validation is to check if the processes that are included in the model represent the biological processes it should model.
+
+2. Explain what a validity domain is and why it is important to consider this whenever we want to use our model to forecast something.
+
+The validity domain is the set of conditions in which a model remains meaningful. When the validity domain for a precipitation model is for elevations between 0m-500m, we shouldn't use it to model precipitation of a location at 1000m.
+
+3. What is validation for purpose? 
+
+The validation for purpose is to validate if the model is useful for the task we want to do. Again looking at the precipitation model example, when the location we want to use the model for is out of range of the validity domain (in the example higher than 1000m), the model is not uselful.
+
+4. How can we ensure that our model is suitable for the predictions we want to make?
+
+We should validate the performance of the model under conditions that represent the conditions that we want to make our predictions for.
+
+# Chapter 30 The PhenoFlex model
+
+1. Parameterize the PhenoFlex model for `Roter Boskoop’ apples.
+
+The PhenoFlex model is a combination of the Dynamic Model and the GDH model and is contained in the chillR-package. It can transition between endo- and ecodormancy by translating accumulated chill(Dynamic Model) to heat effectiveness (GDH model) using a sigmoidal curve. The model allows to re calibrate the factors it uses and can therefore be fitted to certain cultivars or species. Together with knowledge about the dormancy processes of these cultivars it allows to develope process-based models. How this model is used will be shown on the Roter Boskoop cultivar.
+
+
+First I import the data for the Roter Boskoop blooming dates as well as hourly temperature data of the area and convert it in formats usable for chillR.
+
+```{r}
+Boskop <-
+  read_tab("data/Roter_Boskoop_bloom_1958_2019.csv") %>%
+  select(Pheno_year, First_bloom) %>%
+  mutate(Year = as.numeric(substr(First_bloom, 1, 4)),
+         Month = as.numeric(substr(First_bloom, 5, 6)),
+         Day = as.numeric(substr(First_bloom, 7, 8))) %>%
+  make_JDay() %>%
+  select(Pheno_year, JDay) %>%
+  rename(Year = Pheno_year,
+         pheno = JDay)
+
+hourtemps <- 
+  read_tab("data/TMaxTMin1958-2019_patched.csv") %>%
+  stack_hourly_temps(latitude = 50.6)
+```
+
+The model can be used by the PhenoFlex() function. The function has 12 parameters that can be specified and relate to the dynamic model, the GDH model as well as the transition. As setting the parameters is difficult I first have to fit them. For that I use the solving process "Simulated Annealing". The process uses a set of initial parameters to predict outcomes and adjust the parameters based on the errors it encounters. As the knowledge about the results is limited, solvers are run multiple times which varying initial parameters. When fitting the parameters I use the phenologyFitter()-function instead of the PhenoFlex() function.
+
+As initial parameters I use a provided set of parameters. Furthermore I specify upper and lower boundaries that allow the variation of the initial parameters of the solving process.  
+```{r}
+# here's the order of the parameters (from the helpfile of the
+# PhenoFlex_GDHwrapper function)
+#          yc,  zc,  s1, Tu,    E0,      E1,     A0,         A1,   Tf, Tc, Tb,  slope
+par <-   c(40, 190, 0.5, 25, 3372.8,  9900.3, 6319.5,
+           5.939917e13,  4, 36,  4,  1.60)
+upper <- c(41, 200, 1.0, 30, 4000.0, 10000.0, 7000.0,  
+           6.e13, 10, 40, 10, 50.00)
+lower <- c(38, 180, 0.1, 0 , 3000.0,  9000.0, 6000.0,   
+           5.e13,  0,  0,  0,  0.05)
+```
+
+Now I generate a list of seasons containing temperature data and can be used in the phenologyFitter-function. For that we use the genSeasonList-function.
+
+```{r}
+SeasonList <- genSeasonList(hourtemps$hourtemps,
+                            mrange = c(8, 6),
+                            years = c(1959:2018))
+```
+Now I use the phenologyFitter() to fit the parameters. I insert the initial parameters as well as the upper and lower bounderies and provide the temperature data. As model function I use the PhenoFlex_GDHwrapper, that automatically computes the growing degree hours and applies it to the PhenoFlex()-model. Furthermore I set the maximum number of iterations to 100 (maxit = 100). I stop the iteration when the model doesn't show improvement for 5 iterations. 
+
+```{r}
+
+# fitting the parameters 
+
+Fit_res <- 
+  phenologyFitter(par.guess = par, 
+                  modelfn = PhenoFlex_GDHwrapper,
+                  bloomJDays = Boskop$pheno[which(Boskop$Year > 1958)],
+                  SeasonList = SeasonList,
+                  lower = lower,
+                           upper = upper,
+                           control = list(smooth = FALSE,
+                                          verbose = FALSE, 
+                                          maxit = 100,
+                                          nb.stop.improvement = 5))
+# saving the model parameters
+Boskop_par <- Fit_res$par
+
+write.csv(Boskop_par,
+          "data/PhenoFlex_parameters_Boskop.csv")
+```
+
+2. Produce plots of predicted vs. observed bloom dates and distribution of prediction errors.
+
+Now I use the fittet parameters to predict the blooms for every year of our data. 
+
+```{r}
+Boskop_par <- 
+  read_tab("data/PhenoFlex_parameters_Boskop.csv")[,2]
+
+SeasonList <- genSeasonList(hourtemps$hourtemps, 
+                            mrange = c(8, 6),
+                            years = c(1959:2019))
+
+Boskop_PhenoFlex_predictions <- Boskop[which(Boskop$Year > 1958),]
+
+for(y in 1:length(Boskop_PhenoFlex_predictions$Year))
+   Boskop_PhenoFlex_predictions$predicted[y] <-
+    PhenoFlex_GDHwrapper(SeasonList[[y]],
+                         Boskop_par)
+
+
+```
+
+Now I plot the predicted vs observed bloom using ggplot.
+
+```{r}
+
+ggplot(Boskop_PhenoFlex_predictions,
+       aes(x = pheno,
+           y = predicted)) +
+  geom_point() +
+  geom_abline(intercept = 0,
+              slope = 1) +
+  theme_bw(base_size = 15) +
+  xlab("Observed bloom date (Day of the year)") +
+  ylab("Predicted bloom date (Day of the year)") +
+  ggtitle("Predicted vs. observed bloom dates")
+```
+
+Furthermore I plot the distribution of the prediction errors.
+
+```{r}
+# computing the errors
+
+Boskop_PhenoFlex_predictions$Error <- 
+  Boskop_PhenoFlex_predictions$predicted - 
+  Boskop_PhenoFlex_predictions$pheno
+
+# plotting the distribution
+
+ggplot(Boskop_PhenoFlex_predictions,
+       aes(Error)) +
+  geom_histogram() +
+  ggtitle("Distribution of prediction errors")
+```
+
+3. Compute the model performance metrics RMSEP, mean error and mean absolute error.
+
+```{r,eval=FALSE}
+
+RMSEP(Boskop_PhenoFlex_predictions$predicted,
+      Boskop_PhenoFlex_predictions$pheno)
+
+mean(Boskop_PhenoFlex_predictions$Error)
+
+mean(abs(Boskop_PhenoFlex_predictions$Error))
+
+```
+ The RMSEP is at 4.69 days, while we can see a mean error of -1.92 days. The mean absolute error is at 3.34 days. The distribution of the prediction errors is as shown in the following histogram.
+
+# Chapter 31 The PhenoFLex model - a second
+
+1. Make chill and heat response plots for the ‘Roter Boskoop’ PhenoFlex model for the location you did the earlier analyses for.
+
+To evaluate the temperature response of the PhenoFlex components by producing temperature response plots I can again use the workflow developed in chapter 25. As the PhenoFlex model works in a different way as the other models I have to adept the code a bit. Instead of calculating chilling portions with the dynamic model I compute chilling efficiency with the PhenoFlex model. In addition I calculate the heat efficiency, weight by the fitted parameters. 
+
+First I set up a function to weigh the GDH by the parameters Tb, Tu and Tc of the PhenoFlex Model.
+
+
+```{r}
+
+
+GDH_response <- function(T, par)
+  {Tb <- par[11]
+   Tu <- par[4]
+   Tc <- par[10]
+   GDH_weight <- rep(0, length(T))
+   GDH_weight[which(T >= Tb & T <= Tu)] <-
+     1/2 * (1 + cos(pi + pi * (T[which(T >= Tb & T <= Tu)] - Tb)/(Tu - Tb)))
+   GDH_weight[which(T > Tu & T <= Tc)] <-
+     (1 + cos(pi/2 + pi/2 * (T[which(T >  Tu & T <= Tc)] -Tu)/(Tc - Tu)))
+  return(GDH_weight)
+}
+```
+
+Now I make the described changes to the function of chapter 25 and run it.
+
+```{r,eval=FALSE}
+
+latitude <- 50.6
+
+month_range <- c(10, 11, 12, 1, 2, 3)
+
+Tmins = c(-20:20)
+Tmaxs = c(-15:30)
+
+mins <- NA
+maxs <- NA
+chill_eff <- NA
+heat_eff <- NA
+month <- NA
+
+simulation_par <- read_tab("data/PhenoFlex_parameters_Boskop.csv")[,2]
+
+for(mon in month_range)
+    {days_month <- as.numeric(difftime(ISOdate(2002, mon+1, 1),
+                                       ISOdate(2002, mon, 1)))
+     if(mon == 12) days_month <- 31
+     weather <- 
+       make_all_day_table(data.frame(Year = c(2002, 2002),                                   
+                                     Month = c(mon, mon),
+                                     Day = c(1, days_month),
+                                     Tmin = c(0, 0),
+                                     Tmax = c(0, 0)))
+     
+     for(tmin in Tmins)
+      for(tmax in Tmaxs)
+        if(tmax >= tmin)
+          {
+           hourtemps <- weather %>%
+             mutate(Tmin = tmin,
+                    Tmax = tmax) %>%
+             stack_hourly_temps(latitude = latitude) %>%
+             pluck("hourtemps", "Temp")
+           
+           chill_eff <- 
+             c(chill_eff,
+               PhenoFlex(temp = hourtemps,
+                         times = c(1: length(hourtemps)),
+                         A0 = simulation_par[7],
+                         A1 = simulation_par[8],
+                         E0 = simulation_par[5],
+                         E1 = simulation_par[6],
+                         Tf = simulation_par[9],
+                         slope = simulation_par[12],
+                         deg_celsius = TRUE,
+                         basic_output = FALSE)$y[length(hourtemps)] /
+                                            (length(hourtemps) / 24))
+           
+          heat_eff <- 
+            c(heat_eff,
+              cumsum(GDH_response(hourtemps,
+                                  simulation_par))[length(hourtemps)] /
+                                                 (length(hourtemps) / 24))
+          mins <- c(mins, tmin)
+          maxs <- c(maxs, tmax)
+          month <- c(month, mon)
+        }
+}
+
+results <- data.frame(Month = month,
+                      Tmin = mins,
+                      Tmax = maxs,
+                      Chill_eff = chill_eff,
+                      Heat_eff = heat_eff) %>%
+  filter(!is.na(Month))
+
+#saving the results
+
+write.csv(results,
+          "data/model_sensitivity_PhenoFlex.csv")
+```
+
+
+
+
+To plot the chill & heat efficiencies I use the Chill_sensitivity_temps function again, developed in chapter 25.
+
+```{r}
+Model_sensitivities_PhenoFlex <-
+  read.csv("data/model_sensitivity_PhenoFlex.csv")
+
+CKA_weather <- read_tab("data/TMaxTMin1958-2019_patched.csv")
+
+
+Chill_sensitivity_temps(Model_sensitivities_PhenoFlex,
+                        CKA_weather,
+                        temp_model = "Chill_eff",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        Tmins = c(-20:20),
+                        Tmaxs = c(-15:30),
+                        legend_label = "Chill per day \n(arbitrary)") +
+  ggtitle("PhenoFlex chill efficiency ('Roter Boskoop')")
+```
+
+```{r}
+Chill_sensitivity_temps(Model_sensitivities_PhenoFlex,
+                        CKA_weather,
+                        temp_model = "Heat_eff",
+                        month_range = c(10, 11, 12, 1, 2, 3),
+                        Tmins = c(-20:20),
+                        Tmaxs = c(-15:30),
+                        legend_label = "Heat per day \n(arbitrary)") +
+  ggtitle("PhenoFlex heat efficiency ('Roter Boskoop')")
+```
+
+
+# Chaper 32 
+
+
+1. What was the objective of this work?
+
+The main objective was to improve the PhenoFlex model performance by calibrating it with experimental phenology data.
+
+2. What was the main conclusion?
+
+The main conclusion is that the use of the PhenoFlex model is limitted for extreme conditions as there may be may be mechanisms for breaking dormancy that are not included in the model. 
+
+3. What experiments could we conduct to test the hypothesis that emerged at the end of the conclusion?
+
+To test the hypothesis we could conduct controlled experiments bei denen wir Bäume in Klimakammern wachsen lassen und sie dort gezielt extrem hohen oder extrem niedrigen Temperaturen aussetzen. Die Daten die dabei gesammelt werden könnte man zur Evaluierung des Modells nutzen
